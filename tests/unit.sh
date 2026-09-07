@@ -186,4 +186,28 @@ check "an asa tag does not match the v-rising pattern" \
 check "v-rising is in the CI game list" "yes" \
     "$(grep -q '"slug":"v-rising"' .github/workflows/build.yml && echo yes || echo no)"
 
+# --- steamcmd first-run retry ------------------------------------------------
+# update_game() retries once when a pass fails having installed nothing, which
+# is SteamCMD's intermittent first-run "Missing configuration". It must NOT
+# retry a failure that has an install on disk (a real error, and retrying just
+# doubles the wait), nor one whose manifest the retired-manifest recovery has
+# just moved aside, nor a pass that succeeded.
+
+retry_decision() {  # retry_decision <rc> <manifest: yes|no> <stale manifest: yes|no>
+    if [ "$1" -ne 0 ] && [ "$2" = "no" ] && [ "$3" = "no" ]; then
+        echo retry
+    else
+        echo no-retry
+    fi
+}
+
+check "a failed first pass with nothing installed retries" \
+    "retry" "$(retry_decision 8 no no)"
+check "a failed pass with an install on disk does not retry" \
+    "no-retry" "$(retry_decision 8 yes no)"
+check "a failure right after the retired-manifest recovery does not retry" \
+    "no-retry" "$(retry_decision 8 no yes)"
+check "a successful pass does not retry" \
+    "no-retry" "$(retry_decision 0 no no)"
+
 exit "$fail"

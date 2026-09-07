@@ -128,4 +128,26 @@ update_game() {
         run_steamcmd validate
         STEAM_RC=$?
     fi
+
+    # SteamCMD's very first run on an empty steamcmd directory downloads its own
+    # update and re-execs ("Restarting steamcmd by request"), and app_update on
+    # that same pass intermittently gives up with
+    #   ERROR! Failed to install app 'NNN' (Missing configuration)
+    # and exit 8, after a clean anonymous login. It is Steam's own first-run
+    # state, not ours: measured 2026-09-07 at roughly one run in two, and it
+    # reproduces identically with steamcmd invoked by hand, no runner involved.
+    # The next attempt runs against a warm directory and works every time.
+    #
+    # Retry once, and only when nothing was installed at all. A failure with an
+    # appmanifest already on disk is a real error - out of space, a bad depot -
+    # and retrying that just doubles the wait before the same message. The
+    # .stale check keeps this from firing as a third attempt right after the
+    # retired-manifest recovery above, which moves the manifest out of the way.
+    if [ "${STEAM_RC}" -ne 0 ] && [ ! -f "${STEAM_MANIFEST}" ] && \
+       [ ! -f "${STEAM_MANIFEST}.stale" ]; then
+        echo "---SteamCMD installed nothing on its first pass (exit ${STEAM_RC})---"
+        echo "---That is usually its own first-run bootstrap. Trying once more---"
+        run_steamcmd
+        STEAM_RC=$?
+    fi
 }
