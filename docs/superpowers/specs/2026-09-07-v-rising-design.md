@@ -224,11 +224,23 @@ stop timeout to match, since Docker's default grace is 10s.
 
 ```
 graceful_shutdown()
-  1. pgrep -f VRisingServer.exe  ->  kill -TERM   (the server saves on SIGTERM)
+  1. identify the VRisingServer.exe process  ->  kill -TERM
+     (the server saves on SIGTERM; see the note below on identifying it)
   2. poll up to STOP_TIMEOUT, printing progress every 10s so the wait does not
      read as a hang while a save is in flight
-  3. wineserver_kill(), then kill -9 the Proton wrapper
+  3. ONLY if it is still alive at STOP_TIMEOUT: wineserver_kill(), then kill -9
+     the Proton wrapper. This is the fallback, not a step every shutdown runs -
+     a clean exit skips it, exactly as ASA's shutdown does today.
 ```
+
+Identifying the process is the part that is easy to get wrong. `pkill -f
+VRisingServer.exe` matches too much: the Proton launcher was invoked *as* `proton run
+./VRisingServer.exe` and the `xvfb-run` wrapper's command line contains the same string,
+so `-f` hits all three. Signalling a wrapper tears the prefix down without the game ever
+seeing SIGTERM - a hard kill wearing a graceful shutdown's log messages. `pkill -x` does
+not help either: Linux truncates a process name to 15 characters, so the game's is
+`VRisingServer.e` and an exact-name match on the full name never fires. Match on
+`/proc/<pid>/comm` against that truncated name.
 
 RCON is deliberately **not** on this path. It is an admin tool only —
 `rcon-cli.sh announce`, `shutdown`, `password` — which is what makes moving `rcon.py`
@@ -267,8 +279,11 @@ players cannot use. Same for the query pair.
   constraints entry for the xvfb requirement and the AVX guard.
 - A `ferment9348/v-rising` repository on Docker Hub, created before the first tag.
 
-`.dockerignore` needs no change: `!games/*/scripts/` already covers a new game. The
-monorepo design's claim that it needs editing per game is stale.
+`.dockerignore` needs no change for the new game: `!games/*/scripts/` already covers it,
+and the monorepo design's claim that it needs editing per game is stale. It does need
+one change for the shared directory - CI starts compiling `shared/scripts/*.py`, and the
+`__pycache__` that creates is not matched by the existing `games/*/scripts/__pycache__/`
+rule, so it would be copied into all three images.
 
 ## 8. CI
 
