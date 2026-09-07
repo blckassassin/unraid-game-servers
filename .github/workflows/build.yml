@@ -32,7 +32,8 @@ jobs:
           # description); tagline feeds the Docker Hub short description.
           ALL='[
             {"slug":"ark-survival-ascended","title":"ARK: Survival Ascended Dedicated Server","description":"ASA dedicated server (Windows binary via GE-Proton), SteamCMD-based, Unraid friendly. Inspired by ich777/steamcmd.","tagline":"ARK: Survival Ascended dedicated server for Unraid — SteamCMD + GE-Proton"},
-            {"slug":"terraria","title":"Terraria Dedicated Server","description":"Terraria dedicated server, native Linux binary, checksummed install, Unraid friendly.","tagline":"Terraria dedicated server for Unraid — native Linux, no Proton"}
+            {"slug":"terraria","title":"Terraria Dedicated Server","description":"Terraria dedicated server, native Linux binary, checksummed install, Unraid friendly.","tagline":"Terraria dedicated server for Unraid — native Linux, no Proton"},
+            {"slug":"v-rising","title":"V Rising Dedicated Server","description":"V Rising dedicated server (Windows binary via GE-Proton), SteamCMD-based, Unraid friendly.","tagline":"V Rising dedicated server for Unraid — SteamCMD + GE-Proton"}
           ]'
 
           if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
@@ -66,7 +67,7 @@ jobs:
       - name: Lint the scripts
         run: |
           shellcheck --severity=warning shared/scripts/*.sh games/*/scripts/*.sh tests/*.sh
-          for f in games/*/scripts/*.py; do [ -e "$f" ] && python3 -m py_compile "$f"; done
+          for f in shared/scripts/*.py games/*/scripts/*.py; do [ -e "$f" ] && python3 -m py_compile "$f"; done
           bash tests/unit.sh
 
       - uses: docker/setup-buildx-action@v4

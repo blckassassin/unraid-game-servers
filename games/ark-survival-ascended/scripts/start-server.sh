@@ -8,19 +8,15 @@
 set -u
 umask "${UMASK:-000}"
 
-# SteamCMD keeps its state under $HOME, including depotcache - the manifests an
-# incremental update diffs against. gosu points $HOME at /home/steam, which is
-# in the container's writable layer and so is destroyed whenever the container
-# is recreated from a new image. Without the cached manifest SteamCMD has to
-# ask Steam for it, and Steam refuses request codes for any manifest that is no
-# longer the published one, which cancels the update outright and strands the
-# server on its old build. Keep the cache on the same volume as the install it
-# describes. This must be exported after gosu, which sets HOME from passwd.
-export HOME="${SERVER_DIR}/home"
-mkdir -p "${HOME}"
+# shellcheck source=/dev/null
+source /opt/scripts/proton.sh
+# shellcheck source=/dev/null
+source /opt/scripts/steamcmd.sh
 
-STEAMCMD_URL="https://media.steampowered.com/client/installer/steamcmd_linux.tar.gz"
-PROTON_API="https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest"
+# First, before anything writes under $HOME: this repoints it at the volume so
+# SteamCMD's depotcache survives the container being recreated.
+steamcmd_home
+
 SERVER_EXE="ArkAscendedServer.exe"
 
 # Filled in by locate_game_dirs() once the files are on disk.
@@ -36,16 +32,9 @@ SHUTTING_DOWN="false"
 CONFIG_UMASK_EFFECTIVE=""
 
 # -----------------------------------------------------------------------------
-# Open file limit. Proton's esync/fsync eat FDs fast and ASA dies with confusing
-# wine errors when the limit is the usual 1024.
+# Open file limit, raised for Proton. See shared/scripts/proton.sh.
 # -----------------------------------------------------------------------------
-HARD_NOFILE="$(ulimit -Hn)"
-if [ "${HARD_NOFILE}" = "unlimited" ]; then
-    ulimit -n 1048576 2>/dev/null || true
-else
-    ulimit -n "${HARD_NOFILE}" 2>/dev/null || true
-fi
-echo "---Open file limit set to $(ulimit -n)---"
+raise_nofile
 
 # -----------------------------------------------------------------------------
 # Permissions.
@@ -117,150 +106,13 @@ locate_game_dirs() {
     return 0
 }
 
-# -----------------------------------------------------------------------------
-# SteamCMD
-# -----------------------------------------------------------------------------
-if [ ! -f "${STEAMCMD_DIR}/steamcmd.sh" ]; then
-    echo "---SteamCMD not found, downloading---"
-    mkdir -p "${STEAMCMD_DIR}"
-    if ! curl -fsSL "${STEAMCMD_URL}" -o /tmp/steamcmd.tar.gz; then
-        echo "---Could not download SteamCMD, exiting---"
-        exit 1
-    fi
-    tar -xzf /tmp/steamcmd.tar.gz -C "${STEAMCMD_DIR}"
-    rm -f /tmp/steamcmd.tar.gz
-    chmod +x "${STEAMCMD_DIR}/steamcmd.sh"
+install_steamcmd
+
+if ! resolve_proton; then
+    exit 1
 fi
 
-# -----------------------------------------------------------------------------
-# GE-Proton
-# -----------------------------------------------------------------------------
-# GE-Proton changed its asset naming at GE-Proton11: releases now ship a
-# -x86_64 and a -aarch64 tarball where they used to ship one unsuffixed file.
-# Both spellings are still in play depending on which version you pin, and the
-# aarch64 asset sorts first in the API listing, so picking "the first .tar.gz"
-# lands you an ARM build on an amd64 host.
-install_proton() {
-    local requested="$1"
-    local version="" url="" assets tarball tag base candidate
-
-    if [ "${requested}" = "latest" ]; then
-        echo "---Looking up the latest GE-Proton release---"
-        assets="$(curl -fsSL "${PROTON_API}" \
-                 | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')"
-        if [ -z "${assets}" ] || [ "${assets}" = "null" ]; then
-            echo "---Could not reach the GitHub API (rate limited?)---"
-            echo "---Pin a version instead, e.g. PROTON_VERSION=GE-Proton9-27---"
-            return 1
-        fi
-        url="$(printf '%s\n' "${assets}" | grep -m1 'x86_64\.tar\.gz$')" || \
-            url="$(printf '%s\n' "${assets}" | head -n1)"
-        version="$(basename "${url}" .tar.gz)"
-    else
-        # Accept either the release tag (GE-Proton11-5) or the full asset name
-        # (GE-Proton11-5-x86_64); the download path always wants the tag.
-        tag="${requested%-x86_64}"
-        base="https://github.com/GloriousEggroll/proton-ge-custom/releases/download/${tag}"
-        for candidate in "${tag}-x86_64" "${tag}"; do
-            if [ -x "${PROTON_DIR}/${candidate}/proton" ]; then
-                version="${candidate}"
-                break
-            fi
-            if curl -fsIL -o /dev/null "${base}/${candidate}.tar.gz"; then
-                version="${candidate}"
-                url="${base}/${candidate}.tar.gz"
-                break
-            fi
-        done
-        if [ -z "${version}" ]; then
-            echo "---No downloadable tarball for '${requested}'---"
-            echo "---Expected ${tag}-x86_64.tar.gz or ${tag}.tar.gz on that release---"
-            return 1
-        fi
-    fi
-
-    if [ -x "${PROTON_DIR}/${version}/proton" ]; then
-        echo "---${version} already installed---"
-        PROTON_BIN="${PROTON_DIR}/${version}/proton"
-        return 0
-    fi
-
-    echo "---Downloading ${version}---"
-    tarball="/tmp/${version}.tar.gz"
-    if ! curl -fL "${url}" -o "${tarball}"; then
-        echo "---Download of ${version} failed---"
-        rm -f "${tarball}"
-        return 1
-    fi
-
-    # Verify before extracting. Every GE-Proton release publishes a .sha512sum
-    # next to the tarball, naming the file exactly as we saved it. A missing
-    # sums file is a warning rather than a failure; a mismatch is fatal.
-    if curl -fsSL "${url%.tar.gz}.sha512sum" -o "${tarball}.sha512sum"; then
-        if ( cd /tmp && sha512sum -c --status "$(basename "${tarball}").sha512sum" ); then
-            echo "---Checksum verified---"
-        else
-            echo "---Checksum MISMATCH for ${version}, refusing to extract---"
-            rm -f "${tarball}" "${tarball}.sha512sum"
-            return 1
-        fi
-    else
-        echo "---No published checksum for ${version}, skipping verification---"
-    fi
-    rm -f "${tarball}.sha512sum"
-
-    mkdir -p "${PROTON_DIR}"
-    echo "---Extracting ${version}---"
-    tar -xzf "${tarball}" -C "${PROTON_DIR}"
-    rm -f "${tarball}"
-
-    if [ ! -x "${PROTON_DIR}/${version}/proton" ]; then
-        echo "---${version} did not extract as expected---"
-        return 1
-    fi
-
-    PROTON_BIN="${PROTON_DIR}/${version}/proton"
-    return 0
-}
-
-PROTON_BIN=""
-if ! install_proton "${PROTON_VERSION}"; then
-    # Fall back to whatever build is already on disk rather than refusing to boot.
-    PROTON_BIN="$(find "${PROTON_DIR}" -maxdepth 2 -name proton -type f -executable 2>/dev/null | sort -V | tail -n1)"
-    if [ -z "${PROTON_BIN}" ]; then
-        echo "---No usable Proton build available, exiting---"
-        exit 1
-    fi
-    echo "---Falling back to $(basename "$(dirname "${PROTON_BIN}")")---"
-fi
-echo "---Using Proton: ${PROTON_BIN}---"
-
-# ASA is sensitive to the Proton build, so say something when this is not the
-# one the image was built and tested against. Checking for a deviation rather
-# than for specific bad versions means this never goes stale, and it also
-# catches a pinned old build or a fallback to whatever was already on disk.
-PROTON_RESOLVED="$(basename "$(dirname "${PROTON_BIN}")")"
-if [ -n "${PROTON_TESTED:-}" ] && [ "${PROTON_RESOLVED%-x86_64}" != "${PROTON_TESTED%-x86_64}" ]; then
-    echo "---WARNING: this is not the Proton build this image was tested with---"
-    echo "---  running: ${PROTON_RESOLVED}---"
-    echo "---  tested:  ${PROTON_TESTED}---"
-    echo "---If the server exits without producing any engine log output, this is---"
-    echo "---the first thing to change: set PROTON_VERSION=${PROTON_TESTED} and---"
-    echo "---delete ${PROTON_DIR} so the prefix is rebuilt.---"
-fi
-
-# WINEDEBUG=-all silences exactly the output you need when the server dies
-# during startup, so DEBUG=true turns it back on and captures Proton's own log.
-# +loaddll matters most here: when a Windows binary dies before reaching its own
-# logging, the last DLL it loaded is usually the whole diagnosis.
-if [ "${DEBUG,,}" = "true" ]; then
-    export PROTON_LOG=1
-    export PROTON_LOG_DIR="${SERVER_DIR}/logs"
-    export WINEDEBUG="${WINEDEBUG_OVERRIDE:-+err,+fixme,+loaddll}"
-    mkdir -p "${PROTON_LOG_DIR}"
-    echo "---DEBUG is on: Proton log at ${PROTON_LOG_DIR}/steam-${GAME_ID}.log---"
-    echo "---Turn it off once you have what you need; it is noisy and slows startup---"
-fi
+proton_debug_env
 
 # Proton expects to be told which game it is running. Without SteamGameId it
 # silently disables its own logging entirely (setup_logging returns early), and
@@ -270,113 +122,14 @@ export SteamAppId="${GAME_ID}"
 export SteamGameId="${GAME_ID}"
 export STEAM_COMPAT_APP_ID="${GAME_ID}"
 
-# Proton's lsteamclient bridges the game's Windows Steam API calls to the
-# native Linux steamclient.so, and it looks for that in exactly two places:
-#
-#   $HOME/.steam/sdk64/steamclient.so
-#   $HOME/.steam/sdk32/steamclient.so
-#
-# (lsteamclient/unixlib.cpp). That is the long-standing convention for
-# Steamworks dedicated servers. Miss it and lsteamclient does not fail softly -
-# it asserts, aborting the process the moment the game first touches the Steam
-# API, which for ASA is a second or so after startup. SteamCMD ships both
-# libraries once it has run, so link them into place.
-link_steam_sdk() {
-    local bits src dst
-    for bits in 64 32; do
-        src="${STEAMCMD_DIR}/linux${bits}/steamclient.so"
-        dst="${HOME}/.steam/sdk${bits}"
-        if [ -f "${src}" ]; then
-            mkdir -p "${dst}" 2>/dev/null || continue
-            ln -sfn "${src}" "${dst}/steamclient.so" 2>/dev/null || true
-        else
-            echo "---Note: ${src} is missing; the Steam API bridge may not load---"
-        fi
-    done
-}
-
-export STEAM_COMPAT_CLIENT_INSTALL_PATH="${PROTON_DIR}/steam"
-export STEAM_COMPAT_DATA_PATH="${PROTON_DIR}/prefix"
-mkdir -p "${STEAM_COMPAT_CLIENT_INSTALL_PATH}" "${STEAM_COMPAT_DATA_PATH}"
-
-# A wine prefix belongs to the Proton build that created it, and handing one to
-# a different build fails in ways that are hard to read. Record who built it and
-# discard it when that changes, so switching PROTON_VERSION is enough on its own
-# - no one should have to know to go and delete a folder by hand.
-#
-# Nothing here needs preserving: saves and configs live under ShooterGame/Saved,
-# and Proton rebuilds the prefix on the next start.
-PREFIX_MARKER="${STEAM_COMPAT_DATA_PATH}/.created-by-proton"
-if [ -d "${STEAM_COMPAT_DATA_PATH}/pfx" ]; then
-    PREFIX_BUILT_BY="$(cat "${PREFIX_MARKER}" 2>/dev/null || echo "an unknown build")"
-    if [ "${PREFIX_BUILT_BY}" != "${PROTON_RESOLVED}" ]; then
-        echo "---Prefix was built by ${PREFIX_BUILT_BY}, now running ${PROTON_RESOLVED}---"
-        echo "---Discarding it so Proton rebuilds; saves and configs are untouched---"
-        rm -rf "${STEAM_COMPAT_DATA_PATH:?}"
-        mkdir -p "${STEAM_COMPAT_DATA_PATH}"
-    fi
-fi
-printf '%s' "${PROTON_RESOLVED}" > "${PREFIX_MARKER}" 2>/dev/null || true
+setup_proton_prefix
 
 # -----------------------------------------------------------------------------
 # Game files
 # -----------------------------------------------------------------------------
 echo "---Checking for ARK: Survival Ascended updates---"
 
-STEAM_LOG="${HOME}/Steam/logs/content_log.txt"
-STEAM_MANIFEST="${SERVER_DIR}/steamapps/appmanifest_${GAME_ID}.acf"
-
-run_steamcmd() {
-    local args=( "+@sSteamCmdForcePlatformType" "windows" "+force_install_dir" "${SERVER_DIR}" )
-    if [ -n "${USERNAME}" ]; then
-        args+=( "+login" "${USERNAME}" "${PASSWRD}" )
-    else
-        args+=( "+login" "anonymous" )
-    fi
-    args+=( "+app_update" "${GAME_ID}" )
-    if [ "${1:-}" = "validate" ]; then
-        args+=( "validate" )
-    fi
-    args+=( "+quit" )
-    "${STEAMCMD_DIR}/steamcmd.sh" "${args[@]}"
-}
-
-# Where the log ends now, so the retry check below only reads this run's lines.
-STEAM_LOG_MARK=0
-[ -f "${STEAM_LOG}" ] && STEAM_LOG_MARK="$(wc -l < "${STEAM_LOG}")"
-
-if [ "${VALIDATE,,}" = "true" ]; then
-    echo "---Validate is enabled, this pass will take longer---"
-    run_steamcmd validate
-else
-    run_steamcmd
-fi
-STEAM_RC=$?
-
-# SteamCMD truncates content_log.txt when it grows, which would leave the mark
-# past the end of the file and silently disable the recovery below. If the log
-# shrank, the mark means nothing - read the whole file.
-STEAM_LOG_NOW=0
-[ -f "${STEAM_LOG}" ] && STEAM_LOG_NOW="$(wc -l < "${STEAM_LOG}")"
-[ "${STEAM_LOG_NOW}" -lt "${STEAM_LOG_MARK}" ] && STEAM_LOG_MARK=0
-
-# Steam stops issuing manifest request codes for a depot's old manifest once a
-# new build ships. SteamCMD asks for the installed manifest as the delta source,
-# is refused with 'Access Denied', and cancels the update rather than falling
-# back to a plain download - so it moves zero bytes, leaves the app flagged
-# update-required, and every later start fails identically. VALIDATE does not
-# help; the request comes first. The stale pointer is the appmanifest's
-# InstalledDepots entry, so drop the file and there is nothing to delta from.
-# Seen on 2026-08-27 going from build 24827022 to 24976862.
-if [ "${STEAM_RC}" -ne 0 ] && [ -f "${STEAM_MANIFEST}" ] && \
-   tail -n "+$((STEAM_LOG_MARK + 1))" "${STEAM_LOG}" 2>/dev/null \
-   | grep -q "Failed to get manifest request code"; then
-    echo "---Steam refused the delta source: this build's installed manifest is retired---"
-    echo "---Dropping the stale appmanifest and retrying with validate---"
-    mv "${STEAM_MANIFEST}" "${STEAM_MANIFEST}.stale"
-    run_steamcmd validate
-    STEAM_RC=$?
-fi
+update_game
 
 if ! locate_game_dirs; then
     echo "---${SERVER_EXE} is missing after the SteamCMD run (exit ${STEAM_RC})---"
@@ -455,15 +208,6 @@ fi
 # Shutdown handling. ARK writes its world on exit, so a plain SIGKILL is how
 # people lose hours of progress. Ask nicely over RCON first.
 # -----------------------------------------------------------------------------
-wineserver_kill() {
-    local ws
-    ws="$(dirname "${PROTON_BIN}")/files/bin/wineserver"
-    [ -x "${ws}" ] || ws="$(dirname "${PROTON_BIN}")/dist/bin/wineserver"
-    if [ -x "${ws}" ]; then
-        WINEPREFIX="${STEAM_COMPAT_DATA_PATH}/pfx" "${ws}" -k 2>/dev/null || true
-    fi
-}
-
 stop_log_tail() {
     if [ -n "${LOG_TAIL_PID}" ]; then
         kill "${LOG_TAIL_PID}" 2>/dev/null || true

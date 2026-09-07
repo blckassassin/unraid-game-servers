@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>V-Rising</Name>
+  <Repository>ferment9348/v-rising:latest</Repository>
+  <Registry>https://hub.docker.com/r/ferment9348/v-rising/</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/blckassassin/unraid-game-servers/issues</Support>
+  <Project>https://github.com/blckassassin/unraid-game-servers</Project>
+  <Overview>
+V Rising dedicated server.
+
+V Rising ships no Linux server binary, so this pulls the Windows depot with SteamCMD and runs it under GE-Proton, the same way the ARK: Survival Ascended container here does. First boot downloads about 2GB and then builds a Proton prefix, which can sit quiet for several minutes before anything appears in the log. That is normal.
+
+Settings here are applied on every restart, so changing Max Players or the password and restarting takes effect. They are passed to the server as launch options rather than written into its config files, which means your own edits to ServerHostSettings.json and ServerGameSettings.json are never overwritten - the container seeds those two files once from the defaults the server ships with and then leaves them alone forever.
+
+Anything not listed as a field below is still reachable: the server reads its own VR_ environment variables, so adding a variable named VR_FPS with a value of 45 sets the server framerate, and every setting in Stunlock's documentation works the same way. See https://github.com/StunlockStudios/vrising-dedicated-server-instructions for the full list.
+
+The server saves when the container stops. Raise Unraid's own container stop timeout to at least 75 seconds so the save is not cut off.
+  </Overview>
+  <Category>GameServers:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/templates/v-rising.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/v-rising.png</Icon>
+  <ReadMe>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/games/v-rising/README.md</ReadMe>
+  <License>MIT</License>
+  <ExtraSearchTerms>v rising vampire survival dedicated server</ExtraSearchTerms>
+  <Changes>Initial release.</Changes>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <Requires>About 2GB for the server files, plus roughly 1.5GB for the GE-Proton build and its wine prefix - allow 5GB of free space. It is not a light server, so give it several GB of RAM. The array is fine; a cache drive or SSD makes world loads and saves noticeably quicker.</Requires>
+
+  <Config Name="Game Port" Target="27015" Default="27015" Mode="udp" Description="Game traffic. UDP. This is the one to forward. To change it, set the Container Port, the Host Port and Server Port below all to the same number - Docker cannot tell the server what its host port is, so the three have to agree for the log to report the port players actually type. If you also run the ARK: Survival Ascended container on this server, its Query Port defaults to 27015 as well and Docker will refuse to start the second container. Change one of them - ARK's is the safer one to move, since its 27015 is vestigial and discovery goes via EOS." Type="Port" Display="always" Required="true" Mask="false">27015</Config>
+  <Config Name="Server Port" Target="GAME_PORT" Default="27015" Mode="" Description="The port the server binds. Keep it equal to Game Port above, both the Container Port and the Host Port." Type="Variable" Display="always" Required="true" Mask="false">27015</Config>
+  <Config Name="Query Port" Target="27016" Default="27016" Mode="udp" Description="Steam server list traffic. Forward this too, or the server runs fine and never appears in the browser." Type="Port" Display="always" Required="true" Mask="false">27016</Config>
+  <Config Name="Server Query Port" Target="QUERY_PORT" Default="27016" Mode="" Description="The query port the server binds. Keep it equal to Query Port above, both the Container Port and the Host Port." Type="Variable" Display="always" Required="true" Mask="false">27016</Config>
+  <Config Name="RCON Port" Target="25575" Default="25575" Mode="tcp" Description="RCON. Only forward this if you administer the server from outside this box - anyone who reaches it and has the admin password controls the server." Type="Port" Display="advanced" Required="false" Mask="false">25575</Config>
+  <Config Name="Server RCON Port" Target="RCON_PORT" Default="25575" Mode="" Description="The RCON port the server binds. Keep it equal to RCON Port above." Type="Variable" Display="advanced" Required="false" Mask="false">25575</Config>
+
+  <Config Name="Game Files" Target="/serverdata/serverfiles" Default="/mnt/user/appdata/v-rising" Mode="rw" Description="Where the server, saves and settings live. Several GB - see Requires below." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/v-rising</Config>
+  <Config Name="SteamCMD" Target="/serverdata/steamcmd" Default="/mnt/user/appdata/steamcmd" Mode="rw" Description="SteamCMD itself. Small, and shareable with other SteamCMD containers." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/steamcmd</Config>
+
+  <Config Name="Server Name" Target="SERVER_NAME" Default="V Rising Server" Mode="" Description="Name shown in the server browser. Applied on every restart." Type="Variable" Display="always" Required="true" Mask="false">V Rising Server</Config>
+  <Config Name="Save Name" Target="WORLD_NAME" Default="world1" Mode="" Description="Name of the save directory. Changing this after first boot starts a NEW world - the old one stays on disk under save-data/Saves and can be switched back to by setting this name again. It does not rename anything." Type="Variable" Display="always" Required="true" Mask="false">world1</Config>
+  <Config Name="Max Players" Target="MAX_PLAYERS" Default="40" Mode="" Description="Player slots. 128 is the documented maximum. Applied on every restart." Type="Variable" Display="always" Required="true" Mask="false">40</Config>
+  <Config Name="Server Password" Target="SRV_PWD" Default="" Mode="" Description="Join password. Leave blank for an open server. Applied on every restart." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Admin Password" Target="SRV_ADMIN_PWD" Default="" Mode="" Description="RCON password. Leaving this blank disables RCON entirely, which is the safe default - the server still saves and shuts down cleanly without it. Set it only if you want to run admin commands." Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <Config Name="Server Description" Target="SERVER_DESC" Default="" Mode="" Description="Shown in the server browser's details panel, and printed in chat as players connect." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Max Admins" Target="MAX_ADMINS" Default="4" Mode="" Description="Admins allowed to connect even when the server is full." Type="Variable" Display="advanced" Required="false" Mask="false">4</Config>
+  <Config Name="Game Settings Preset" Target="GAME_PRESET" Default="" Mode="" Description="Load one of the presets shipped in VRisingServer_Data/StreamingAssets/GameSettingPresets, e.g. StandardPvP. Blank uses ServerGameSettings.json as it stands." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Difficulty Preset" Target="DIFFICULTY_PRESET" Default="" Mode="" Description="Difficulty_Easy, Difficulty_Normal or Difficulty_Brutal. Blank leaves the setting alone." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="List on Steam" Target="LIST_ON_STEAM" Default="true" Mode="" Description="Register on the Steam server list. true or false." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="List on EOS" Target="LIST_ON_EOS" Default="true" Mode="" Description="Register on the EOS server list, which is where the client looks by default. true or false." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Secure Mode" Target="SECURE" Default="true" Mode="" Description="VAC protection. VAC banned clients cannot connect. true or false." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Extra Game Parameters" Target="GAME_PARAMS_EXTRA" Default="" Mode="" Description="Appended to the launch line verbatim. Most settings do not need this - see the Overview about VR_ variables." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Validate Files" Target="VALIDATE" Default="" Mode="" Description="Set to true to have SteamCMD verify every file on the next start. Slow. Use it after a crash or a failed update." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Debug Logging" Target="DEBUG" Default="false" Mode="" Description="Turns on Proton and wine logging. Noisy and slows startup - use it when the server exits without writing any log of its own." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Proton Version" Target="PROTON_VERSION" Default="GE-Proton10-34" Mode="" Description="GE-Proton build to run the server under. This image is tested against GE-Proton10-34. A build the game does not tolerate fails silently, before any log is written - if that happens, set this back and delete the proton folder so the prefix is rebuilt." Type="Variable" Display="advanced" Required="false" Mask="false">GE-Proton10-34</Config>
+  <Config Name="Stop Timeout" Target="STOP_TIMEOUT" Default="60" Mode="" Description="Seconds to wait for a graceful save-and-exit before force killing. Also raise Unraid's own container stop timeout to match." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+  <Config Name="Steam Username" Target="USERNAME" Default="" Mode="" Description="Leave blank. The V Rising server downloads anonymously." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Steam Password" Target="PASSWRD" Default="" Mode="" Description="Leave blank." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="UID" Target="UID" Default="99" Mode="" Description="User ID. 99 is the Unraid default." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="GID" Target="GID" Default="100" Mode="" Description="Group ID. 100 is the Unraid default." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Data Permissions" Target="DATA_PERM" Default="775" Mode="" Description="Mode applied to the top of the server directory." Type="Variable" Display="advanced" Required="false" Mask="false">775</Config>
+  <Config Name="UMASK" Target="UMASK" Default="000" Mode="" Description="umask for files the server creates. 000 keeps them editable over the share." Type="Variable" Display="advanced" Required="false" Mask="false">000</Config>
+</Container>

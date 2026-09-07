@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Minimal Source RCON client.
 
-ASA speaks the standard Valve RCON protocol, so this is only ~60 lines and saves
-pulling in a whole extra package just to send SaveWorld and DoExit on shutdown.
+These servers speak the standard Valve RCON protocol, so this is only ~60 lines
+and saves pulling in a whole extra package just to send a save and an exit.
 
 Usage: rcon.py <host> <port> <password> <command> [<command> ...]
 """
