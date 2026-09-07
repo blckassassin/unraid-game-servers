@@ -179,4 +179,11 @@ for slug in ark-survival-ascended terraria v-rising; do
     check "${slug} template targets all exist in its Dockerfile" "" "${missing}"
 done
 
+check "v-rising release version extracts" \
+    "1.0.0" "$(extract v-rising v-rising/v1.0.0)"
+check "an asa tag does not match the v-rising pattern" \
+    "" "$(extract v-rising ark-survival-ascended/v1.5.0)"
+check "v-rising is in the CI game list" "yes" \
+    "$(grep -q '"slug":"v-rising"' .github/workflows/build.yml && echo yes || echo no)"
+
 exit "$fail"
