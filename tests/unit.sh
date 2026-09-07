@@ -64,4 +64,41 @@ check "a bare tag does not match" \
 check "a typo'd slug does not match" \
     "" "$(extract ark-survival-ascended ark-survival-acended/v1.5.0)"
 
+# --- repo root guard ---------------------------------------------------------
+# Every check from here down reads repo files by relative path. Run from
+# anywhere else and each one reports a misleading "no" instead of an error.
+if [ ! -f shared/scripts/start.sh ]; then
+    echo "FAIL - run this from the repo root: bash tests/unit.sh"
+    exit 1
+fi
+
+# --- shared library surface --------------------------------------------------
+# Two games source these now. A function that silently fails to move during an
+# extraction produces a container that boots and then dies inside wine, so
+# assert the surface exists rather than trusting the diff.
+
+defines() {  # defines <file> <function name>
+    bash -c "source '$1' >/dev/null 2>&1; declare -F '$2' >/dev/null && echo yes || echo no"
+}
+
+for fn in raise_nofile install_proton resolve_proton proton_debug_env \
+          setup_proton_prefix wineserver_kill; do
+    check "proton.sh defines ${fn}" "yes" "$(defines shared/scripts/proton.sh "${fn}")"
+done
+
+# --- proton tested-build comparison ------------------------------------------
+# resolve_proton() warns when the build in use is not the one the image was
+# tested against. Both sides are stripped of the -x86_64 suffix first, because
+# GE-Proton ships the same build under both spellings depending on the release,
+# and comparing them unstripped warns on every boot of a correct install.
+
+same_build() {  # same_build <resolved> <tested>
+    if [ "${1%-x86_64}" = "${2%-x86_64}" ]; then echo same; else echo differs; fi
+}
+
+check "suffixed and bare spellings of one build compare equal" \
+    "same" "$(same_build GE-Proton10-34-x86_64 GE-Proton10-34)"
+check "two different builds compare unequal" \
+    "differs" "$(same_build GE-Proton11-5 GE-Proton10-34)"
+
 exit "$fail"
