@@ -25,7 +25,22 @@ The server saves its world when the container stops. Leave Unraid's stop timeout
   <ReadMe>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/games/terraria/README.md</ReadMe>
   <License>MIT</License>
   <ExtraSearchTerms>terraria dedicated server sandbox</ExtraSearchTerms>
-  <Changes>Initial release.</Changes>
+  <Changes>
+###1.0.2 (2026-09-04)
+- The game port can now actually be moved. Setting a different port used to leave the log reporting a number players could not connect to. Container Port, Host Port and Server Port must all match; the template explains this on each field.
+
+###1.0.1 (2026-09-04)
+- Every URL points at the renamed unraid-game-servers repository. Installed templates keep working.
+- The Docker Hub description sync no longer fails silently.
+
+###1.0.0 (2026-09-04)
+Initial release.
+
+- Terraria dedicated server, native Linux binary, no SteamCMD and no Proton. The server is a small checksummed download from terraria.org and a world generates in seconds.
+- Settings are applied on every start, so changing Max Players or the password and restarting takes effect. World Name is the exception: pointing it at a name that does not exist generates a new world and leaves the old one on disk.
+- Only 7777/tcp needs forwarding, and note it is TCP rather than UDP.
+- The world is saved when the container stops.
+  </Changes>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <Requires>About 100MB of disk and very little RAM - 1GB is comfortable for a small server. It is not I/O heavy, so the array is fine and no cache drive or SSD is needed.</Requires>
 
