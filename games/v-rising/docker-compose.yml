@@ -1,0 +1,41 @@
+services:
+  v-rising:
+    build:
+      context: ../..
+      dockerfile: games/v-rising/Dockerfile
+    image: ferment9348/v-rising:latest
+    container_name: v-rising
+    restart: unless-stopped
+    # STOP_TIMEOUT is 60, and the handler needs a moment past it to kill the
+    # prefix and drain the log. Docker's default grace is 10s, which would fire
+    # its own SIGKILL in the middle of the save this whole path exists to
+    # protect.
+    stop_grace_period: 75s
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    ports:
+      - "27015:27015/udp"
+      - "27016:27016/udp"
+      - "25575:25575/tcp"
+    environment:
+      SERVER_NAME: "V Rising Server"
+      WORLD_NAME: "world1"
+      MAX_PLAYERS: "40"
+      SRV_PWD: ""
+      SRV_ADMIN_PWD: "changeme"
+      GAME_PORT: "27015"
+      QUERY_PORT: "27016"
+      RCON_PORT: "25575"
+      GAME_PARAMS_EXTRA: ""
+      PROTON_VERSION: "GE-Proton10-34"
+      VALIDATE: ""
+      UMASK: "000"
+      # 1000:1000 suits an ordinary Linux host. The Unraid template uses
+      # 99:100 (nobody:users) instead, which is what Unraid's SMB stack expects.
+      UID: "1000"
+      GID: "1000"
+    volumes:
+      - ./data/serverfiles:/serverdata/serverfiles
+      - ./data/steamcmd:/serverdata/steamcmd

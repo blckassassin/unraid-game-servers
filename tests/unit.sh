@@ -133,4 +133,24 @@ check "rcon.py is in shared" "yes" \
 check "rcon-cli.sh is in shared" "yes" \
     "$([ -f shared/scripts/rcon-cli.sh ] && echo yes || echo no)"
 
+# --- v rising rcon flags -----------------------------------------------------
+# This is the exact rule in games/v-rising/scripts/start-server.sh's build_flags().
+# V Rising's own docs: the RCON password "must be configured, this cannot be
+# left empty", so no admin password means RCON off, not RCON open.
+
+rcon_flags() {  # rcon_flags <admin password> <port>
+    if [ -n "$1" ]; then
+        printf -- '-rconEnabled true -rconPort %s -rconPassword %s' "$2" "$1"
+    else
+        printf -- '-rconEnabled false'
+    fi
+}
+
+check "an admin password enables rcon with port and password" \
+    "-rconEnabled true -rconPort 25575 -rconPassword hunter2" \
+    "$(rcon_flags hunter2 25575)"
+check "no admin password disables rcon and emits no password flag" \
+    "-rconEnabled false" \
+    "$(rcon_flags "" 25575)"
+
 exit "$fail"
