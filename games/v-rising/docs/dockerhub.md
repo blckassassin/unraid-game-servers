@@ -4,8 +4,9 @@ A V Rising dedicated server. V Rising ships no Linux server binary, so this pull
 the Windows depot with SteamCMD and runs it under GE-Proton, with a virtual
 display because the binary will not start without one.
 
-First boot downloads about 2GB and then builds a Proton prefix. It can sit quiet
-for several minutes before the log shows anything. That is normal.
+First boot downloads about 2GB, then builds a Proton prefix, and settles at about
+4GB on disk. It can sit quiet for a few minutes before the log shows anything.
+That is normal.
 
 Built for Unraid, but it is an ordinary container and runs anywhere.
 
@@ -84,10 +85,11 @@ works the same way, whether or not it has a named variable above.
   writes those files again. `ServerGameSettings.json` — the gameplay balance
   knobs — it never touches at all. The settings above reach the server as launch
   options instead, so both can be right at once.
-- **Stopping saves the world.** Give the container a stop timeout of at least 75
-  seconds (`--stop-timeout 75`, or `stop_grace_period: 75s`). Docker's default is
-  10, which fires mid-save. RCON is not involved, so a server with no admin
-  password still stops cleanly.
+- **Stopping saves the world.** Measured: the save lands about a second after the
+  stop begins, and the container is down in about four. Still give it a stop timeout
+  of at least 75 seconds (`--stop-timeout 75`, or `stop_grace_period: 75s`) so a
+  busy server has room. RCON is not involved, so a server with no admin password
+  stops just as cleanly.
 - **RCON is an admin tool, not a requirement.** With `SRV_ADMIN_PWD` set:
   `docker exec v-rising /opt/scripts/rcon-cli.sh announce "Restarting in 5"`.
 - **A CPU without AVX is handled.** `lib_burst_generated.dll` aborts the server on

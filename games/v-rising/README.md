@@ -6,8 +6,9 @@ the [ARK: Survival Ascended](../../README.md) container in this repo. It also ru
 the server under a virtual display, because the binary will not start without one
 even headless.
 
-First boot downloads about 2GB and then builds a Proton prefix, which can sit
-quiet for several minutes before anything appears in the log. That is normal.
+First boot downloads about 2GB, then builds a Proton prefix, and settles at about
+4GB on disk. It can sit quiet for a few minutes before anything appears in the log.
+That is normal.
 
 ## Get the image
 
@@ -119,16 +120,19 @@ The full command list is `help`, `announce`, `announcerestart`, `shutdown`,
 
 ## Stopping safely
 
-V Rising saves when it receives a shutdown signal, so a normal `docker stop` or
-the Unraid stop button is safe. `STOP_TIMEOUT` (default 60) is how long the
-container waits for that save before forcing the issue.
+V Rising saves when the container stops, so a normal `docker stop` or the Unraid
+stop button is safe. Measured: the save is written about a second after the stop
+begins and the container is down in about four. `STOP_TIMEOUT` (default 60) is how
+long it waits for that save before forcing the issue, so there is a wide margin.
 
 **Raise Unraid's own container stop timeout to at least 75 seconds.** Docker's
 default is 10, and if that fires first it kills the container mid-save. The
 setting is under Settings → Docker.
 
-You do not need RCON for this. The shutdown path signals the server directly, so
-a server with no admin password still saves cleanly.
+You do not need RCON for this. The shutdown path signals the server directly, so a
+server with no admin password still saves cleanly. RCON's own `shutdown` command
+saves too, but it schedules rather than acts — a one-minute notice really does wait,
+which is useful for warning players and useless for stopping a container.
 
 ## Troubleshooting
 

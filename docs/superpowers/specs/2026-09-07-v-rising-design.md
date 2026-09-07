@@ -34,8 +34,16 @@ any of these.
   TrueOsiris runs `Xvfb :0` with `DISPLAY=:0.0`. Neither runs the binary bare.
 - On CPUs without AVX, `VRisingServer_Data/Plugins/x86_64/lib_burst_generated.dll`
   has to be moved aside or the server fails to start.
-- The server saves on `SIGTERM`: TrueOsiris's handler sends `kill -15` to
-  `VRisingServer.exe`, waits, then `wineserver -k`. No RCON is involved.
+- **The server saves on `SIGINT`, not `SIGTERM`.** Measured 2026-09-07 under
+  GE-Proton10-34, three times: `SIGTERM` kills it in under half a second with no save
+  and nothing in its log, while `SIGINT` writes a full save in about one second and
+  exits 0 about three seconds later. TrueOsiris's container sends `kill -15` and
+  relies on it, but that runs under plain `wine64`, which evidently translates the
+  signal differently. This is why the reference containers are a starting point and
+  not evidence.
+- RCON's `shutdown` does save, but it *schedules*: `shutdown 1 msg` measured here took
+  over three minutes to fire, and `<message times>` rejects `0`. It is an admin tool,
+  not a shutdown path.
 
 ### Not verified — establish during implementation, do not assume
 
@@ -224,8 +232,9 @@ stop timeout to match, since Docker's default grace is 10s.
 
 ```
 graceful_shutdown()
-  1. identify the VRisingServer.exe process  ->  kill -TERM
-     (the server saves on SIGTERM; see the note below on identifying it)
+  1. identify the VRisingServer.exe process  ->  kill -INT
+     (SIGINT saves; SIGTERM does not - see Verified facts. Note below on
+     identifying the process.)
   2. poll up to STOP_TIMEOUT, printing progress every 10s so the wait does not
      read as a hang while a save is in flight
   3. ONLY if it is still alive at STOP_TIMEOUT: wineserver_kill(), then kill -9
@@ -319,9 +328,10 @@ Two manual smoke runs, both required before the first tag:
 1. **ASA, after the extraction.** This is the real risk in the change. Boot it, confirm
    it resolves Proton, reaches SteamCMD, prints the uid/gid, and that a stop still
    saves over RCON.
-2. **V Rising.** Boot to "server started" in the log, join it, then stop the container
-   and confirm the save landed. This is also where the four unverified facts above get
-   settled.
+2. **V Rising.** Boot to "Startup Completed" in the log, then stop the container and
+   confirm the save landed. This is also where the four unverified facts above get
+   settled. Joining from a real client is not part of this: it needs a licensed copy
+   and proves less than the server-side checks already do.
 
 ## 10. Deliberately not building
 

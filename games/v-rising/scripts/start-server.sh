@@ -11,8 +11,8 @@
 #    command-line override that beats the file, so the template's fields are
 #    passed as flags and the seeded JSON is never touched again. That is what
 #    lets a hand edit and a template field coexist.
-# 3. Shutdown does not use RCON. V Rising saves on SIGTERM, so the handler
-#    signals the process directly. RCON ships purely as an admin tool.
+# 3. Shutdown does not use RCON. V Rising saves on SIGINT (not SIGTERM), so the
+#    handler signals the process directly. RCON ships purely as an admin tool.
 
 set -u
 umask "${UMASK:-000}"
@@ -109,9 +109,18 @@ build_flags() {
 }
 
 # -----------------------------------------------------------------------------
-# Shutdown. V Rising saves on SIGTERM, so this signals the game process rather
-# than going through RCON - which also means a server with no admin password
-# still shuts down cleanly.
+# Shutdown. V Rising saves on SIGINT - NOT on SIGTERM. Measured 2026-09-07
+# under GE-Proton10-34: SIGTERM kills it dead in under half a second with no
+# save and nothing written to its log, while SIGINT writes a full save in about
+# one second and exits 0 about three seconds later. A reference container that
+# uses SIGTERM does so under plain wine64, which evidently translates it
+# differently; do not "fix" this back to TERM on the strength of that.
+#
+# Signalling the game directly, rather than going through RCON, is what lets a
+# server with no admin password still shut down cleanly. RCON's own `shutdown`
+# command does save, but it schedules rather than acts - a `shutdown 1 msg`
+# measured here took over three minutes to fire, far past any sane
+# STOP_TIMEOUT - so it is an admin tool, not a shutdown path.
 #
 # The signal has to reach VRisingServer.exe itself, not the Proton launcher:
 # SERVER_PID below is xvfb-run's, whose child is proton, whose child is the
@@ -169,9 +178,10 @@ graceful_shutdown() {
         wineserver_kill
         sleep 5
     else
-        echo "---Sending SIGTERM to ${SERVER_EXE} (pid $(tr '\n' ' ' <<< "${pids}"))---"
+        echo "---Sending SIGINT to ${SERVER_EXE} (pid $(tr '\n' ' ' <<< "${pids}"))---"
+        # INT, not TERM: TERM kills this server without saving. See the note above.
         # shellcheck disable=SC2086
-        kill -TERM ${pids} 2>/dev/null || true
+        kill -INT ${pids} 2>/dev/null || true
 
         # Poll the game itself, not SERVER_PID. SERVER_PID is xvfb-run, which
         # outlives the game by however long it takes to tear the X server down,

@@ -114,8 +114,12 @@ docker run --rm -e UID=1000 -e GID=1000 vrising-test
   so the template's fields are passed as launch flags and the seeded JSON is left
   alone forever. Do not "fix" this by making the container write JSON — that is
   what would destroy a user's hand edits.
-- **V Rising's shutdown does not use RCON (V Rising only).** It saves on SIGTERM.
-  The signal must reach `VRisingServer.exe` itself, identified by
+- **V Rising saves on SIGINT, not SIGTERM (V Rising only).** SIGTERM kills it in
+  under half a second with no save at all; SIGINT saves in about a second and exits
+  cleanly. Measured, three times, under GE-Proton10-34. Containers elsewhere use
+  SIGTERM under plain `wine64`, which behaves differently — do not "fix" this back.
+  RCON is not on the shutdown path: its `shutdown` command does save but schedules
+  minutes out. The signal must reach `VRisingServer.exe` itself, identified by
   `/proc/<pid>/comm` against the 15-character truncation `VRisingServer.e`. Both
   wrappers — `xvfb-run` and the Proton launcher — carry the exe name on their
   command lines, so `pkill -f` hits them too, and signalling a wrapper orphans the
