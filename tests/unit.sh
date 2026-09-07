@@ -153,4 +153,30 @@ check "no admin password disables rcon and emits no password flag" \
     "-rconEnabled false" \
     "$(rcon_flags "" 25575)"
 
+# --- template env targets ----------------------------------------------------
+# A Config Target= that names no ENV in the image is a field the user fills in
+# and the server never sees. Nothing at runtime catches it, so catch it here.
+#
+# The absent-file and no-targets cases are called out explicitly. grep on a
+# missing file prints nothing, so a loop over its output simply never runs and
+# "missing" stays empty - which would report a pass for a template that does not
+# exist at all, in exactly the situation this check was written for.
+
+for slug in ark-survival-ascended terraria v-rising; do
+    missing=""
+    targets=""
+    if [ ! -f "templates/${slug}.xml" ]; then
+        missing="(no templates/${slug}.xml)"
+    else
+        targets="$(grep -o 'Target="[A-Z_]*"' "templates/${slug}.xml" | cut -d'"' -f2)"
+        if [ -z "${targets}" ]; then
+            missing="(template declares no environment targets)"
+        fi
+    fi
+    for target in ${targets}; do
+        grep -q "^ *${target}=" "games/${slug}/Dockerfile" || missing="${missing} ${target}"
+    done
+    check "${slug} template targets all exist in its Dockerfile" "" "${missing}"
+done
+
 exit "$fail"
