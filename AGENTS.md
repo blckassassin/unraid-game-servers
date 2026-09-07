@@ -15,8 +15,8 @@ local testing only.
 | `games/<slug>/scripts/`                | Game-specific scripts, copied to `/opt/scripts` in the image. |
 | `games/<slug>/docs/dockerhub.md`       | Docker Hub long description, synced by CI on release. |
 | `games/<slug>/README.md`               | That game's guide — except ASA, see Constraints.    |
-| `games/ark-survival-ascended/scripts/rcon.py` | Minimal Source RCON client. No dependencies beyond stdlib. |
-| `games/ark-survival-ascended/scripts/rcon-cli.sh` | Thin wrapper for `docker exec` use.             |
+| `shared/scripts/rcon.py`               | Minimal Source RCON client, shared by every game with RCON. No dependencies beyond stdlib. |
+| `shared/scripts/rcon-cli.sh`           | Thin wrapper for `docker exec` use.                 |
 | `games/terraria/scripts/console.sh`    | Sends a command through Terraria's FIFO console.    |
 | `shared/scripts/start.sh`              | Common root entrypoint, runs as root. Reconciles the `steam` uid/gid, fixes ownership, then `gosu` to that game's `start-server.sh`. |
 | `templates/<slug>.xml`                 | Unraid Community Apps template for that game. CA requires one XML per app under `templates/`. |
@@ -42,7 +42,7 @@ pass before a change ships:
 
 ```sh
 shellcheck --severity=warning shared/scripts/*.sh games/*/scripts/*.sh tests/*.sh
-python3 -m py_compile games/ark-survival-ascended/scripts/rcon.py
+python3 -m py_compile shared/scripts/rcon.py
 bash tests/unit.sh
 bash tests/e2e-terraria.sh terraria-test     # Terraria only; ASA's boot pulls ~13GB
 ```

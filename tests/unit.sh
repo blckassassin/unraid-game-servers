@@ -120,4 +120,17 @@ mark_after() {  # mark_after <mark before> <length now>
 check "a grown log keeps its mark" "500" "$(mark_after 500 900)"
 check "a truncated log resets the mark to 0" "0" "$(mark_after 500 12)"
 
+# --- lint globs --------------------------------------------------------------
+# CI compiles games/*/scripts/*.py. Once rcon.py lives in shared/ that glob
+# matches nothing, and the loop's own [ -e "$f" ] guard turns a vanished file
+# into a pass rather than an error - a silent hole exactly where the shutdown
+# path's only Python lives. Assert the workflow looks in both places.
+
+check "CI compiles shared/scripts python" "yes" \
+    "$(grep -q 'shared/scripts/\*\.py' .github/workflows/build.yml && echo yes || echo no)"
+check "rcon.py is in shared" "yes" \
+    "$([ -f shared/scripts/rcon.py ] && echo yes || echo no)"
+check "rcon-cli.sh is in shared" "yes" \
+    "$([ -f shared/scripts/rcon-cli.sh ] && echo yes || echo no)"
+
 exit "$fail"

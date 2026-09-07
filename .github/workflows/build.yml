@@ -66,7 +66,7 @@ jobs:
       - name: Lint the scripts
         run: |
           shellcheck --severity=warning shared/scripts/*.sh games/*/scripts/*.sh tests/*.sh
-          for f in games/*/scripts/*.py; do [ -e "$f" ] && python3 -m py_compile "$f"; done
+          for f in shared/scripts/*.py games/*/scripts/*.py; do [ -e "$f" ] && python3 -m py_compile "$f"; done
           bash tests/unit.sh
 
       - uses: docker/setup-buildx-action@v4

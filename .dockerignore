@@ -5,6 +5,7 @@
 *
 !shared/scripts/
 !games/*/scripts/
-# CI's lint step (py_compile) creates this before the build step runs; last
-# match wins, so this must stay after the re-inclusions above.
+# CI's lint step (py_compile) creates these before the build step runs; last
+# match wins, so these must stay after the re-inclusions above.
 games/*/scripts/__pycache__/
+shared/scripts/__pycache__/
