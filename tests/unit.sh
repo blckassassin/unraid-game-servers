@@ -101,4 +101,23 @@ check "suffixed and bare spellings of one build compare equal" \
 check "two different builds compare unequal" \
     "differs" "$(same_build GE-Proton11-5 GE-Proton10-34)"
 
+for fn in steamcmd_home install_steamcmd run_steamcmd update_game link_steam_sdk; do
+    check "steamcmd.sh defines ${fn}" "yes" "$(defines shared/scripts/steamcmd.sh "${fn}")"
+done
+
+# --- steam content log mark --------------------------------------------------
+# update_game() records how long content_log.txt was before the run so the
+# retired-manifest check only reads this run's lines. SteamCMD truncates that
+# log when it grows, which would leave the mark past the end of the file and
+# silently disable the recovery. A shrunk log means the mark is meaningless.
+
+mark_after() {  # mark_after <mark before> <length now>
+    local mark="$1"
+    [ "$2" -lt "${mark}" ] && mark=0
+    echo "${mark}"
+}
+
+check "a grown log keeps its mark" "500" "$(mark_after 500 900)"
+check "a truncated log resets the mark to 0" "0" "$(mark_after 500 12)"
+
 exit "$fail"
