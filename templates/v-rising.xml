@@ -25,7 +25,16 @@ The server saves when the container stops. Raise Unraid's own container stop tim
   <ReadMe>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/games/v-rising/README.md</ReadMe>
   <License>MIT</License>
   <ExtraSearchTerms>v rising vampire survival dedicated server</ExtraSearchTerms>
-  <Changes>Initial release.</Changes>
+  <Changes>
+###1.0.0 (2026-09-07)
+Initial release.
+
+- V Rising dedicated server. The game ships no Linux server binary, so this installs the Windows depot with SteamCMD and runs it under GE-Proton.
+- Settings here are applied as launch options on every start, so changing Max Players or the password and restarting takes effect. They are not written into the server's config files, so your own edits to ServerHostSettings.json and ServerGameSettings.json are never overwritten.
+- Any variable you add whose name starts with VR_ is read by the server directly, so every setting in Stunlock's documentation is available even without a field for it. For example VR_FPS set to 45.
+- Stopping the container saves the world. Raise Unraid's container stop timeout to at least 75 seconds.
+- A CPU without AVX is handled automatically.
+  </Changes>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <Requires>About 4GB once installed - 1.6GB of server files, 2.1GB for the GE-Proton build and its wine prefix - so allow 6GB of free space for saves and updates. It is not a light server, so give it several GB of RAM. The array is fine; a cache drive or SSD makes world loads and saves noticeably quicker.</Requires>
 
