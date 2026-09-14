@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>RuneScape-Dragonwilds</Name>
+  <Repository>ferment9348/dragonwilds:latest</Repository>
+  <Registry>https://hub.docker.com/r/ferment9348/dragonwilds/</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/blckassassin/unraid-game-servers/issues</Support>
+  <Project>https://github.com/blckassassin/unraid-game-servers</Project>
+  <Overview>
+RuneScape: Dragonwilds dedicated server.
+
+Unlike the ARK and V Rising containers here, Dragonwilds ships a real Linux server binary, so there is no Proton and no wine involved - SteamCMD pulls the Linux depot and the server runs natively. First boot downloads about 1.5GB and settles at about 5GB on disk, then generates a world, which takes a few minutes.
+
+Owner ID is required and the container cannot guess it. It is your in-game Player ID: open the game, go to Settings, and it is at the bottom of that menu with a copy button next to it. Without it the server still starts and still binds its port, but refuses every player - so this container deliberately refuses to start instead, and says so in the log, rather than leaving you with something that looks healthy and is not.
+
+The fields below are written into the server's DedicatedServer.ini on every start, so changing one and restarting takes effect. Only those five keys are touched; everything else in that file is left exactly as it is, including the ServerGuid the server generates for itself. The other side of that bargain: if you hand-edit Server Name, World Name, Owner ID or either password in the ini, the field here wins on the next start. Edit them here, not in the file.
+
+Stopping the container does NOT save, and no container can make it: the game's save-on-exit path is its in-game quit flow, which a signal cannot reach, and there is no RCON, console or save command. What protects you is the server's own autosave, measured here at exactly every 5 minutes whether or not anyone is connected. So a stop costs you at most 5 minutes of progress. For a clean stop, have players quit out through the game menu first - that does save. Raise Unraid's container stop timeout to at least 45 seconds so the engine finishes shutting down.
+  </Overview>
+  <Category>GameServers:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/templates/dragonwilds.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/dragonwilds.png</Icon>
+  <ReadMe>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/games/dragonwilds/README.md</ReadMe>
+  <License>MIT</License>
+  <ExtraSearchTerms>runescape dragonwilds jagex survival dedicated server</ExtraSearchTerms>
+  <Changes>
+###1.0.0 (2026-09-14)
+Initial release.
+
+- RuneScape: Dragonwilds dedicated server. The game ships a native Linux server binary, so this needs no Proton or wine - SteamCMD installs the Linux depot and the server runs directly.
+- Owner ID is required. It is your in-game Player ID, from the bottom of the in-game Settings menu. The container refuses to start without it, because the server itself does not: it would run, bind its port and refuse every player.
+- Server Name, World Name, Owner ID and both passwords are written into DedicatedServer.ini on every start, so changing one and restarting takes effect. Nothing else in that file is touched, including the ServerGuid.
+- Stopping the container does not save - the game's only save-on-exit path is its in-game quit flow, unreachable from outside, and it has no RCON or console. The server autosaves every 5 minutes instead, so a stop costs at most 5 minutes. Have players quit out in-game for a clean stop. Raise Unraid's container stop timeout to at least 45 seconds.
+- Player cap is 6. It is not a setting in this game's config file, so there is no field for it.
+- UDP 7777 is the only port the server binds. Note that ARK's game port defaults to 7777 too, so if you run both, move one of them.
+  </Changes>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <Requires>About 5GB once installed, from a 1.5GB download, so allow 8GB of free space for saves and updates. Roughly 2GB of RAM plus 1GB per player, so 8GB for a full server - the cap is 6 players. The array is fine; a cache drive or SSD makes world loads and saves noticeably quicker.</Requires>
+
+  <Config Name="Game Port" Target="7777" Default="7777" Mode="udp" Description="Game traffic. UDP, and the only port this server binds - there is no separate query port, because it lists through EOS rather than Steam. This is the one to forward. To change it, set the Container Port, the Host Port and Server Port below all to the same number - Docker cannot tell the server what its host port is, so the three have to agree. If you also run the ARK: Survival Ascended container on this server, its Game Port defaults to 7777 as well and Docker will refuse to start the second container. Change one of them." Type="Port" Display="always" Required="true" Mask="false">7777</Config>
+  <Config Name="Server Port" Target="GAME_PORT" Default="7777" Mode="" Description="The port the server binds. Keep it equal to Game Port above, both the Container Port and the Host Port." Type="Variable" Display="always" Required="true" Mask="false">7777</Config>
+
+  <Config Name="Game Files" Target="/serverdata/serverfiles" Default="/mnt/user/appdata/dragonwilds" Mode="rw" Description="Where the server, saves and config live. About 5GB - see Requires below. Your worlds are under RSDragonwilds/Saved/SaveGames and your config is RSDragonwilds/Saved/Config/LinuxServer/DedicatedServer.ini." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dragonwilds</Config>
+  <Config Name="SteamCMD" Target="/serverdata/steamcmd" Default="/mnt/user/appdata/steamcmd" Mode="rw" Description="SteamCMD itself. Small, and shareable with other SteamCMD containers." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/steamcmd</Config>
+
+  <Config Name="Owner ID" Target="OWNER_ID" Default="" Mode="" Description="REQUIRED. Your in-game Player ID: open RuneScape: Dragonwilds, go to Settings, and it is at the bottom of that menu with a copy button next to it. The server will not serve anyone without this, and this container refuses to start without it rather than run something that looks healthy and turns every player away." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Server Name" Target="SERVER_NAME" Default="Dragonwilds Server" Mode="" Description="Name shown in the server browser. Applied on every restart." Type="Variable" Display="always" Required="true" Mask="false">Dragonwilds Server</Config>
+  <Config Name="World Name" Target="WORLD_NAME" Default="Standard" Mode="" Description="Names the world the server creates on first boot, and the save file it uses - SaveGames/&lt;name&gt;.sav. This is most likely also the name players type to find you under Worlds then Public, and it is case-sensitive, so pick something you are happy telling people. Changing it after first boot starts a NEW world; the old one stays on disk and setting this name back returns to it. It does not rename anything." Type="Variable" Display="always" Required="true" Mask="false">Standard</Config>
+  <Config Name="Admin Password" Target="SRV_ADMIN_PWD" Default="" Mode="" Description="Anyone who enters this in the game's Pause Menu, Settings, Server Management tab becomes an admin on this server. Leave it blank and the server generates a random one on first boot and prints it in the log - so setting one here is the easier path. Changing it revokes admin from everyone who used the old one." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="World Password" Target="SRV_PWD" Default="" Mode="" Description="Join password. Leave blank for a server anyone can join. This supersedes any password stored in the world itself." Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <Config Name="Extra Game Parameters" Target="GAME_PARAMS_EXTRA" Default="" Mode="" Description="Appended to the launch line verbatim. Nothing routine needs this - every documented setting lives in DedicatedServer.ini, not on the command line. The one known use is attempting to raise the 6-player cap, which is not in that file: -ini:Game:[/Script/Engine.GameSession]:MaxPlayers=8 - though whether a value above 6 does anything is unverified." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Validate Files" Target="VALIDATE" Default="" Mode="" Description="Set to true to have SteamCMD verify every file on the next start. Slow on a 5GB install. Use it after a crash or a failed update." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Stop Timeout" Target="STOP_TIMEOUT" Default="30" Mode="" Description="Seconds to wait for the engine to shut down before force killing. This is not a save window - shutdown does not save, and the 5-minute autosave is what protects the world. Measured teardown is about 2 seconds. Also raise Unraid's own container stop timeout to at least 45." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Steam Username" Target="USERNAME" Default="" Mode="" Description="Leave blank. The Dragonwilds server downloads anonymously." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Steam Password" Target="PASSWRD" Default="" Mode="" Description="Leave blank." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="UID" Target="UID" Default="99" Mode="" Description="User ID. 99 is the Unraid default. It must not be 0 - the server refuses to run as root and aborts on startup." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="GID" Target="GID" Default="100" Mode="" Description="Group ID. 100 is the Unraid default." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Data Permissions" Target="DATA_PERM" Default="775" Mode="" Description="Mode applied to the top of the server directory." Type="Variable" Display="advanced" Required="false" Mask="false">775</Config>
+  <Config Name="UMASK" Target="UMASK" Default="000" Mode="" Description="umask for files the server creates. 000 keeps them editable over the share." Type="Variable" Display="advanced" Required="false" Mask="false">000</Config>
+</Container>

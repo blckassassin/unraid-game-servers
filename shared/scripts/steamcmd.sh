@@ -2,8 +2,9 @@
 # SteamCMD install and app update, shared by every game here that installs from
 # Steam. Sourced, never executed.
 #
-# Reads:  STEAMCMD_DIR, SERVER_DIR, GAME_ID, USERNAME, PASSWRD, VALIDATE, and HOME
-#         (which steamcmd_home() below is what sets - call it first)
+# Reads:  STEAMCMD_DIR, SERVER_DIR, GAME_ID, USERNAME, PASSWRD, VALIDATE,
+#         STEAM_DEPOT_PLATFORM, and HOME (which steamcmd_home() below is what sets -
+#         call it first)
 # Sets:   STEAM_RC
 # Exports: HOME
 
@@ -43,8 +44,33 @@ install_steamcmd() {
     chmod +x "${STEAMCMD_DIR}/steamcmd.sh"
 }
 
+# Which depot to install. ASA and V Rising ship no Linux server binary, so both
+# take the Windows one and run it under Proton; Dragonwilds ships a native Linux
+# depot and must not be handed the Windows flag. Getting this wrong is silent:
+# the wrong depot installs perfectly cleanly and the launch target is simply
+# absent afterwards, which reads as a failed download rather than a wrong one.
+#
+# The default stays "windows" because that is what the two Proton images have
+# always passed and neither of their Dockerfiles sets this.
+#
+# The name is STEAM_DEPOT_PLATFORM and NOT the obvious STEAM_PLATFORM, which is
+# already taken: SteamCMD's own steamcmd.sh reads a variable by that name to
+# decide which of its directories holds its binary,
+#
+#     : "${STEAM_PLATFORM:=linux32}"
+#     STEAMEXE="${STEAMROOT}/$STEAM_PLATFORM/${STEAMCMD}"
+#
+# so an image exporting STEAM_PLATFORM=linux sends SteamCMD looking for
+# /serverdata/steamcmd/linux/steamcmd, which does not exist. It then exits 1
+# before doing anything, on every single boot, and the only symptom is
+#
+#     Couldn't find steamcmd at /serverdata/steamcmd/linux/steamcmd, exiting
+#
+# in among the startup noise. Found by running the container, not by reading it.
+# Do not "simplify" this name.
 run_steamcmd() {
-    local args=( "+@sSteamCmdForcePlatformType" "windows" "+force_install_dir" "${SERVER_DIR}" )
+    local platform="${STEAM_DEPOT_PLATFORM:-windows}"
+    local args=( "+@sSteamCmdForcePlatformType" "${platform}" "+force_install_dir" "${SERVER_DIR}" )
     if [ -n "${USERNAME}" ]; then
         args+=( "+login" "${USERNAME}" "${PASSWRD}" )
     else
