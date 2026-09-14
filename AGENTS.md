@@ -1,10 +1,17 @@
 # AGENTS.md
 
-Dedicated game server containers for Unraid. Three games live here today: **ARK:
-Survival Ascended** and **V Rising** (Debian + SteamCMD pulling the Windows depot,
-run under GE-Proton — V Rising additionally needs a virtual display) and
-**Terraria** (Debian, native Linux binary — no SteamCMD, no Proton). Target
-platform is Unraid; each game's `docker-compose.yml` is for local testing only.
+Dedicated game server containers for Unraid. Four games live here today, in three
+shapes:
+
+- **ARK: Survival Ascended** and **V Rising** — Debian + SteamCMD pulling the
+  Windows depot, run under GE-Proton. V Rising additionally needs a virtual
+  display.
+- **RuneScape: Dragonwilds** — Debian + SteamCMD pulling the *Linux* depot, run
+  natively. No Proton.
+- **Terraria** — Debian, native Linux binary, no SteamCMD and no Proton.
+
+Target platform is Unraid; each game's `docker-compose.yml` is for local testing
+only.
 
 ## Layout
 
@@ -20,11 +27,13 @@ platform is Unraid; each game's `docker-compose.yml` is for local testing only.
 | `games/terraria/scripts/console.sh`    | Sends a command through Terraria's FIFO console.    |
 | `shared/scripts/start.sh`              | Common root entrypoint, runs as root. Reconciles the `steam` uid/gid, fixes ownership, then `gosu` to that game's `start-server.sh`. |
 | `shared/scripts/proton.sh`             | GE-Proton install, prefix management and `wineserver_kill`. Sourced by ASA and V Rising. |
-| `shared/scripts/steamcmd.sh`           | SteamCMD bootstrap, the app update and its retired-manifest recovery, and the `HOME` repoint. Sourced by ASA and V Rising. |
+| `shared/scripts/steamcmd.sh`           | SteamCMD bootstrap, the app update and its retired-manifest recovery, and the `HOME` repoint. Sourced by ASA, V Rising and Dragonwilds. `STEAM_DEPOT_PLATFORM` picks the depot; it defaults to `windows` for the two Proton games. |
 | `templates/<slug>.xml`                 | Unraid Community Apps template for that game. CA requires one XML per app under `templates/`. |
 | `ca_profile.xml`                       | CA repository profile, covering every game here. Must be at the root with a non-empty `<Profile>`, or submission is blocked. |
 | `icon.png` / `icon.svg`                | ASA's icons, referenced by `ca_profile.xml` and its template. |
 | `terraria.png` / `terraria.svg`        | Terraria's icons.                                    |
+| `v-rising.png` / `v-rising.svg`        | V Rising's icons.                                    |
+| `dragonwilds.png` / `dragonwilds.svg`  | Dragonwilds' icons.                                  |
 | `tools/icongen/`                       | Generates the per-game icon PNGs from source art.    |
 | `tests/unit.sh`                        | Plain-assertion unit tests, no framework.            |
 | `tests/e2e-terraria.sh`                | Boot/shutdown end-to-end test against a built Terraria image. |
@@ -36,6 +45,7 @@ platform is Unraid; each game's `docker-compose.yml` is for local testing only.
 docker build -f games/ark-survival-ascended/Dockerfile -t asa-test .
 docker build -f games/terraria/Dockerfile -t terraria-test .
 docker build -f games/v-rising/Dockerfile -t vrising-test .
+docker build -f games/dragonwilds/Dockerfile -t dragonwilds-test .
 ```
 
 ## Test
@@ -59,7 +69,13 @@ then stop it there:
 ```sh
 docker run --rm -e UID=1000 -e GID=1000 asa-test
 docker run --rm -e UID=1000 -e GID=1000 vrising-test
+docker run --rm -e UID=1000 -e GID=1000 dragonwilds-test
 ```
+
+Dragonwilds is the same kind of manual check (~1.5GB download, ~5GB installed),
+but it needs a real `OWNER_ID` to get past the guard in its runner and reach a
+world. Without one the run stops at that message, which is itself the thing worth
+confirming.
 
 ## Constraints
 
@@ -73,7 +89,7 @@ docker run --rm -e UID=1000 -e GID=1000 vrising-test
 - **Terraria's `STOP_TIMEOUT` is `6`, not ASA's `120`.** `6` plus a bounded 3s
   wait for the log reader must stay under Docker's 10s default stop grace
   (6+3=9s). Do not copy ASA's value over.
-- **All three images run as the account `steam`, Terraria included**, because
+- **Every image runs as the account `steam`, Terraria included**, because
   `shared/scripts/start.sh` hardcodes it in the `gosu` call.
 - **`UID` is also a bash variable.** In `shared/scripts/start.sh` it is read
   into `TARGET_UID` rather than used directly, and `PUID`/`PGID` are accepted
@@ -86,9 +102,24 @@ docker run --rm -e UID=1000 -e GID=1000 vrising-test
   itself run roughly 20x slower and can wedge the container log entirely.
   `VERBOSE_LOG=true` bypasses the collapsing for diagnosis without touching how
   the server itself is run. Do not "simplify" this into a live pipe.
-- **Windows depot, not Linux (ASA only).** ASA has no native Linux server
-  binary. SteamCMD is given `+@sSteamCmdForcePlatformType windows` and the exe
-  runs under Proton. amd64 only — an arm64 image would be meaningless.
+- **Windows depot, not Linux (ASA and V Rising).** Neither has a native Linux
+  server binary. `run_steamcmd()` passes `+@sSteamCmdForcePlatformType` from
+  `STEAM_DEPOT_PLATFORM`, which defaults to `windows` precisely so those two need not
+  set it, and the exe runs under Proton. amd64 only — an arm64 image would be
+  meaningless.
+- **Linux depot, and it must be asked for (Dragonwilds only).** App 4019830
+  publishes both. `games/dragonwilds/Dockerfile` sets `STEAM_DEPOT_PLATFORM=linux`;
+  without it SteamCMD installs 4.8GB of Windows binaries perfectly cleanly and
+  the Linux launch target is simply absent, which reads as a failed download
+  rather than a wrong one.
+- **That variable is `STEAM_DEPOT_PLATFORM`, never `STEAM_PLATFORM`.**
+  `STEAM_PLATFORM` belongs to SteamCMD's own `steamcmd.sh`, which uses it to find
+  its binary (`: "${STEAM_PLATFORM:=linux32}"`, then
+  `STEAMEXE="${STEAMROOT}/$STEAM_PLATFORM/${STEAMCMD}"`). An image exporting
+  `STEAM_PLATFORM=linux` makes SteamCMD look for
+  `/serverdata/steamcmd/linux/steamcmd`, fail to find it and exit 1 before doing
+  anything — every boot, with one easily-missed line as the only symptom. A unit
+  test asserts no image reintroduces the name.
 - **`ServerAdminPassword` must be the last `?` argument (ASA).** Anything after
   it is swallowed into the password value. See the ordering in
   `games/ark-survival-ascended/scripts/start-server.sh`.
@@ -128,3 +159,32 @@ docker run --rm -e UID=1000 -e GID=1000 vrising-test
   RCON, then a timed wait, then kill the wine prefix. A hard kill loses world
   state. Terraria has no RCON; its shutdown writes `exit` into a FIFO console
   instead (`games/terraria/scripts/console.sh`).
+- **Dragonwilds rewrites managed ini keys every boot (Dragonwilds only).** It is
+  neither ASA's write-once seed nor Terraria's full regeneration. Nothing in that
+  game has a command-line override, so the ini is the only channel; but the
+  server writes to that file itself (it generates and persists a `ServerGuid`,
+  and fills in any missing `ServerName`, `AdminPassword` or `DefaultWorldName`).
+  So `set_ini_key()` replaces the five keys the template owns and preserves every
+  other byte. Regenerating would destroy the `ServerGuid`; seeding write-once
+  would make every template field silently dead after first boot.
+- **`set_ini_key()` passes its value through the environment, not `awk -v`
+  (Dragonwilds only).** `-v` runs escape processing over the assignment, so
+  `-v value='a\fun'` hands awk a formfeed and silently eats two characters. An
+  admin password is exactly the sort of value that contains a backslash. Caught
+  by a unit test; do not "tidy" it back onto `-v`.
+- **Dragonwilds launches the ELF, not `RSDragonwildsServer.sh` (Dragonwilds
+  only).** That wrapper does not `exec` — it runs
+  `RSDragonwilds/Binaries/Linux/RSDragonwildsServer-Linux-Shipping` as a child —
+  so a signal sent to it never reaches the game and the shutdown handler would
+  report a clean save over a hard kill. Going straight to the binary makes `$!`
+  the server and avoids the whole `/proc/<pid>/comm` problem V Rising has.
+- **Dragonwilds refuses to start with an empty `OWNER_ID` (Dragonwilds only).**
+  The server does not: with `OwnerId` blank it starts, binds 7777/udp and turns
+  away every player, so the container looks healthy and serves nobody. Refusing
+  is the better failure. Do not "fix" this into a warning.
+- **The server aborts under root (Dragonwilds only).** Unreal prints `Refusing to
+  run with the root privileges` and exits 134. `start.sh`'s `gosu` drop already
+  handles it; a `UID` of 0 would not be.
+- **Saves are `Saved/SaveGames/`, capital G (Dragonwilds only).** The game's wiki
+  writes `Savegames`. A case-mismatched path would be created as a second empty
+  directory beside the real one, silently.

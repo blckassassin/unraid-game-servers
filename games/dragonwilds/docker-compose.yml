@@ -1,0 +1,34 @@
+services:
+  dragonwilds:
+    build:
+      context: ../..
+      dockerfile: games/dragonwilds/Dockerfile
+    image: ferment9348/dragonwilds:latest
+    container_name: dragonwilds
+    restart: unless-stopped
+    # STOP_TIMEOUT is 30, plus a moment to reap the server. Docker's default
+    # grace is 10s, which would SIGKILL the engine partway through its teardown.
+    # Note this is not protecting a save - shutdown does not save. See the README.
+    stop_grace_period: 45s
+    ports:
+      - "7777:7777/udp"
+    environment:
+      # The server runs, binds its port and refuses every player without this.
+      # It is your in-game Player ID, from the bottom of the in-game Settings menu.
+      OWNER_ID: ""
+      SERVER_NAME: "Dragonwilds Server"
+      WORLD_NAME: "Standard"
+      SRV_PWD: ""
+      SRV_ADMIN_PWD: ""
+      GAME_PORT: "7777"
+      GAME_PARAMS_EXTRA: ""
+      VALIDATE: ""
+      UMASK: "000"
+      # 1000:1000 suits an ordinary Linux host. The Unraid template uses 99:100
+      # (nobody:users) instead, which is what Unraid's SMB stack expects. Neither
+      # may be 0 - the server aborts outright under root.
+      UID: "1000"
+      GID: "1000"
+    volumes:
+      - ./data/serverfiles:/serverdata/serverfiles
+      - ./data/steamcmd:/serverdata/steamcmd

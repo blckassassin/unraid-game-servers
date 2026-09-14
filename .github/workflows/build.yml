@@ -33,7 +33,8 @@ jobs:
           ALL='[
             {"slug":"ark-survival-ascended","title":"ARK: Survival Ascended Dedicated Server","description":"ASA dedicated server (Windows binary via GE-Proton), SteamCMD-based, Unraid friendly. Inspired by ich777/steamcmd.","tagline":"ARK: Survival Ascended dedicated server for Unraid — SteamCMD + GE-Proton"},
             {"slug":"terraria","title":"Terraria Dedicated Server","description":"Terraria dedicated server, native Linux binary, checksummed install, Unraid friendly.","tagline":"Terraria dedicated server for Unraid — native Linux, no Proton"},
-            {"slug":"v-rising","title":"V Rising Dedicated Server","description":"V Rising dedicated server (Windows binary via GE-Proton), SteamCMD-based, Unraid friendly.","tagline":"V Rising dedicated server for Unraid — SteamCMD + GE-Proton"}
+            {"slug":"v-rising","title":"V Rising Dedicated Server","description":"V Rising dedicated server (Windows binary via GE-Proton), SteamCMD-based, Unraid friendly.","tagline":"V Rising dedicated server for Unraid — SteamCMD + GE-Proton"},
+            {"slug":"dragonwilds","title":"RuneScape: Dragonwilds Dedicated Server","description":"RuneScape: Dragonwilds dedicated server, native Linux binary, SteamCMD-based, Unraid friendly.","tagline":"RuneScape: Dragonwilds dedicated server for Unraid — native Linux, no Proton"}
           ]'
 
           if [ "${GITHUB_REF_TYPE}" != "tag" ]; then

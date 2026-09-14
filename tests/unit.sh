@@ -162,7 +162,7 @@ check "no admin password disables rcon and emits no password flag" \
 # "missing" stays empty - which would report a pass for a template that does not
 # exist at all, in exactly the situation this check was written for.
 
-for slug in ark-survival-ascended terraria v-rising; do
+for slug in ark-survival-ascended terraria v-rising dragonwilds; do
     missing=""
     targets=""
     if [ ! -f "templates/${slug}.xml" ]; then
@@ -209,5 +209,168 @@ check "a failure right after the retired-manifest recovery does not retry" \
     "no-retry" "$(retry_decision 8 no yes)"
 check "a successful pass does not retry" \
     "no-retry" "$(retry_decision 0 no no)"
+
+# --- steamcmd platform -------------------------------------------------------
+# run_steamcmd() passes +@sSteamCmdForcePlatformType. It defaulted to "windows"
+# when every SteamCMD game here was a Windows depot run under Proton; Dragonwilds
+# publishes both a Windows and a Linux depot and needs the Linux one. The failure
+# is silent in the worst way - the wrong depot installs perfectly cleanly and the
+# launch target is simply absent afterwards, which reads as a failed download
+# rather than a wrong one - so assert both branches.
+
+platform_for() {  # platform_for [STEAM_DEPOT_PLATFORM]
+    (
+        set -u
+        [ $# -ge 1 ] && STEAM_DEPOT_PLATFORM="$1"
+        echo "${STEAM_DEPOT_PLATFORM:-windows}"
+    )
+}
+
+check "no STEAM_DEPOT_PLATFORM keeps the windows default the proton games rely on" \
+    "windows" "$(platform_for)"
+check "STEAM_DEPOT_PLATFORM=linux overrides it" \
+    "linux" "$(platform_for linux)"
+check "the shared runner reads STEAM_DEPOT_PLATFORM rather than hardcoding windows" \
+    "yes" \
+    "$(grep -q 'STEAM_DEPOT_PLATFORM:-windows' shared/scripts/steamcmd.sh && echo yes || echo no)"
+check "the dragonwilds image asks for the linux depot" \
+    "yes" \
+    "$(grep -q '^ *STEAM_DEPOT_PLATFORM="linux"' games/dragonwilds/Dockerfile && echo yes || echo no)"
+
+# The name must not be STEAM_PLATFORM. SteamCMD's own steamcmd.sh reads that one
+# to locate its binary (`: "${STEAM_PLATFORM:=linux32}"`, then
+# `STEAMEXE="${STEAMROOT}/$STEAM_PLATFORM/${STEAMCMD}"`), so an image exporting
+# STEAM_PLATFORM=linux sends SteamCMD hunting for
+# /serverdata/steamcmd/linux/steamcmd and it exits 1 before doing anything, on
+# every boot. That is a container that never installs its game and whose only
+# complaint is one line in the startup noise. Caught by running the thing; this
+# assertion is what stops it coming back.
+# Comment lines are excluded on purpose: steamcmd.sh explains the collision in
+# prose, and quoting the name in a warning must not trip the warning. Note that
+# "STEAM_DEPOT_PLATFORM" does not contain "STEAM_PLATFORM" as a substring, so no
+# further guarding is needed to tell the two apart.
+check "no image or shared script sets the colliding STEAM_PLATFORM" "" \
+    "$(grep -rn 'STEAM_PLATFORM' shared/scripts games/*/Dockerfile games/*/scripts 2>/dev/null \
+       | grep -v ':[[:space:]]*#' | cut -d: -f1 | sort -u | tr '\n' ' ' | sed 's/ $//')"
+
+# --- dragonwilds ini key rewriting -------------------------------------------
+# The only non-trivial logic in that runner, and the one place a bug is
+# expensive: this file is the sole channel for every setting the game has, and
+# the SERVER writes to it too. A first run with no ini generates and persists a
+# ServerGuid plus any missing ServerName/AdminPassword/DefaultWorldName:
+#
+#   LogDomServerSettings: Generated missing ServerGuid: CE0871C6...
+#
+# So the container must replace the five keys the template owns and preserve
+# every other byte. Regenerating the file (Terraria's pattern) would destroy the
+# ServerGuid; seeding write-once (ASA's pattern) would make the template's fields
+# silently dead after first boot.
+#
+# The function is pulled out of the shipped runner rather than copied here, so
+# these assertions cannot drift away from the code they describe.
+eval "$(sed -n '/^set_ini_key() {/,/^}/p' games/dragonwilds/scripts/start-server.sh)"
+DW_SECTION="/Script/Dominion.DedicatedServerSettings"
+ini_tmp="$(mktemp -d)"
+trap 'rm -rf "${ini_tmp}"' EXIT
+
+# The literal file a real first run produced, on 2026-09-14.
+generated_ini() {
+    cat <<EOF
+;METADATA=(Diff=true, UseCommands=true)
+[${DW_SECTION}]
+AdminPassword=YXPHC6S6YR8JW8KA
+OwnerId=
+ServerGuid=CE0871C643CA4D38A7F89D83DAB8C6B1
+ServerName=Server-44208
+WorldPassword=
+DefaultWorldName=World-35188
+EOF
+}
+
+f="${ini_tmp}/a.ini"
+generated_ini > "${f}"
+set_ini_key "${f}" "${DW_SECTION}" OwnerId 0123456789ABCDEF
+check "an existing key is replaced in place" \
+    "OwnerId=0123456789ABCDEF" "$(grep '^OwnerId=' "${f}")"
+check "ServerGuid survives a managed-key rewrite" \
+    "ServerGuid=CE0871C643CA4D38A7F89D83DAB8C6B1" "$(grep '^ServerGuid=' "${f}")"
+check "the ;METADATA line survives" \
+    ";METADATA=(Diff=true, UseCommands=true)" "$(head -n1 "${f}")"
+check "the rewrite adds no lines" "8" "$(wc -l < "${f}")"
+
+# A value carrying the characters that would break a sed-based implementation.
+# awk concatenates rather than substituting, which is why this is safe.
+set_ini_key "${f}" "${DW_SECTION}" ServerName 'Jordan & co = 100% \fun/'
+check "a value with & = \\ / and spaces is written verbatim" \
+    "ServerName=Jordan & co = 100% \\fun/" "$(grep '^ServerName=' "${f}")"
+
+# Clearing a password field must actually clear it, not leave the old value.
+set_ini_key "${f}" "${DW_SECTION}" WorldPassword ""
+check "an emptied field is written as an empty value" \
+    "WorldPassword=" "$(grep '^WorldPassword=' "${f}")"
+
+# A key the file does not have yet, in a section it does.
+f="${ini_tmp}/b.ini"
+printf ';META\n[%s]\nServerGuid=KEEP\n' "${DW_SECTION}" > "${f}"
+set_ini_key "${f}" "${DW_SECTION}" OwnerId ABC
+check "a missing key is appended to the existing section" \
+    ";META|[${DW_SECTION}]|ServerGuid=KEEP|OwnerId=ABC" \
+    "$(paste -sd'|' "${f}")"
+
+# Neither the section nor the key exists. Must not corrupt what is there.
+f="${ini_tmp}/c.ini"
+printf '[SomethingElse]\nFoo=bar\n' > "${f}"
+set_ini_key "${f}" "${DW_SECTION}" OwnerId ABC
+check "a missing section is created without disturbing the existing one" \
+    "[SomethingElse]|Foo=bar||[${DW_SECTION}]|OwnerId=ABC" \
+    "$(paste -sd'|' "${f}")"
+
+# No file at all: the very first boot, before the server has ever run.
+f="${ini_tmp}/d.ini"
+set_ini_key "${f}" "${DW_SECTION}" OwnerId ABC
+check "an absent file is created with just the section and key" \
+    "[${DW_SECTION}]|OwnerId=ABC" "$(paste -sd'|' "${f}")"
+
+# The target section is NOT last. An appended key must land inside it, against
+# the other keys, rather than at the bottom of the file under someone else's.
+f="${ini_tmp}/e.ini"
+printf '[%s]\nServerGuid=KEEP\n\n[Other]\nX=1\n' "${DW_SECTION}" > "${f}"
+set_ini_key "${f}" "${DW_SECTION}" OwnerId ABC
+check "a key appended to a non-final section stays inside it" \
+    "[${DW_SECTION}]|ServerGuid=KEEP|OwnerId=ABC||[Other]|X=1" \
+    "$(paste -sd'|' "${f}")"
+
+# The same key name in another section is not ours to touch.
+f="${ini_tmp}/f.ini"
+printf '[Other]\nOwnerId=DO_NOT_TOUCH\n[%s]\nOwnerId=old\n' "${DW_SECTION}" > "${f}"
+set_ini_key "${f}" "${DW_SECTION}" OwnerId NEW
+check "a same-named key in a different section is left alone" \
+    "[Other]|OwnerId=DO_NOT_TOUCH|[${DW_SECTION}]|OwnerId=NEW" \
+    "$(paste -sd'|' "${f}")"
+
+# --- dragonwilds release and CI ----------------------------------------------
+check "dragonwilds release version extracts" \
+    "1.0.0" "$(extract dragonwilds dragonwilds/v1.0.0)"
+check "a v-rising tag does not match the dragonwilds pattern" \
+    "" "$(extract dragonwilds v-rising/v1.0.0)"
+check "dragonwilds is in the CI game list" "yes" \
+    "$(grep -q '"slug":"dragonwilds"' .github/workflows/build.yml && echo yes || echo no)"
+
+# --- dragonwilds launches the binary, not the wrapper ------------------------
+# RSDragonwildsServer.sh does not exec - it runs the ELF as a child - so a signal
+# sent to the wrapper never reaches the game, and the shutdown handler would
+# report a clean save while the server was hard-killed by the teardown. Launching
+# the ELF directly is what makes $! the server. This is the same class of bug the
+# V Rising runner needed /proc/<pid>/comm to work around, avoided rather than
+# handled, so assert the avoidance holds.
+check "the runner launches the ELF directly" "yes" \
+    "$(grep -q 'RSDragonwildsServer-Linux-Shipping' games/dragonwilds/scripts/start-server.sh && echo yes || echo no)"
+check "the runner does not launch the non-exec wrapper" "yes" \
+    "$(grep -q '\${SERVER_DIR}/RSDragonwildsServer.sh' games/dragonwilds/scripts/start-server.sh && echo no || echo yes)"
+
+# The server aborts under root with "Refusing to run with the root privileges",
+# so the image must not ship UID=0 as a default.
+check "the dragonwilds image does not default to root" "yes" \
+    "$(grep -q '^ *UID="0"' games/dragonwilds/Dockerfile && echo no || echo yes)"
 
 exit "$fail"

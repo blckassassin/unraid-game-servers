@@ -2,10 +2,12 @@
   <Profile>
 Dedicated game server containers for Unraid.
 
-Three servers are maintained here. **ARK: Survival Ascended** and **V Rising**
-both ship Windows-only server binaries, so each is installed with SteamCMD from
-the Windows depot and run under GE-Proton. **Terraria** is the opposite: a native
-Linux dedicated server with no SteamCMD or Proton involved at all.
+Four servers are maintained here, in three shapes. **ARK: Survival Ascended** and
+**V Rising** both ship Windows-only server binaries, so each is installed with
+SteamCMD from the Windows depot and run under GE-Proton. **RuneScape: Dragonwilds**
+sits in between: SteamCMD installs it, but from a native Linux depot, so it runs
+directly with no Proton. **Terraria** is the far end: a native Linux dedicated
+server with no SteamCMD or Proton involved at all.
 
 The layout follows ich777's game server containers — the same
 `/serverdata/steamcmd` and `/serverdata/serverfiles` split, the same
