@@ -1,9 +1,8 @@
 # V Rising — dedicated server for Unraid
 
 V Rising ships no Linux server binary, so this container pulls the Windows depot
-with SteamCMD and runs `VRisingServer.exe` under GE-Proton — the same approach as
-the [ARK: Survival Ascended](../../README.md) container in this repo. It also runs
-the server under a virtual display, because the binary will not start without one
+with SteamCMD and runs `VRisingServer.exe` under GE-Proton. It also runs the
+server under a virtual display, because the binary will not start without one
 even headless.
 
 First boot downloads about 2GB, then builds a Proton prefix, and settles at about
@@ -35,10 +34,8 @@ in that template; the variable names are what you would use with `docker run`.
 | `27016` | UDP      | Steam query. Forward it too, or the server runs fine and never appears in the browser. |
 | `25575` | TCP      | RCON. Only expose this if you administer from outside the box. |
 
-**If you also run the ARK container on this server, its Query Port defaults to
-27015 as well** and Docker refuses to start the second container. Change one of
-them. ARK's is the safer one to move: its 27015 is vestigial, since ASA's
-discovery goes through EOS.
+**If anything else on this box already listens on 27015**, Docker refuses to
+start this container. Change this port, or the other one.
 
 To move the game port, three numbers have to agree: the container port, the host
 port, and `GAME_PORT`. Docker cannot tell the server what its host port is, so if
@@ -139,7 +136,7 @@ which is useful for warning players and useless for stopping a container.
 **Nothing in the log at all, for a long time.** First boot is genuinely slow: 2GB
 of download, then a Proton prefix build. If it stays silent well past that, the
 Proton build is the first suspect — this repo has been bitten by exactly that
-before, on ARK. Set `DEBUG=true` and restart to capture wine and Proton output,
+before. Set `DEBUG=true` and restart to capture wine and Proton output,
 and check `PROTON_VERSION` is `GE-Proton10-34`.
 
 **The server starts but is not in the server browser.** Check the query port:

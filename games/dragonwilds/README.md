@@ -1,9 +1,7 @@
 # RuneScape: Dragonwilds — dedicated server for Unraid
 
-Unlike the [ARK](../../README.md) and [V Rising](../v-rising/README.md) containers
-in this repo, Dragonwilds ships a real Linux server binary. There is no Proton,
-no wine and no virtual display here — SteamCMD pulls the Linux depot and the
-server runs natively.
+Dragonwilds ships a real Linux server binary, so there is no Proton, no wine and
+no virtual display — SteamCMD pulls the Linux depot and the server runs natively.
 
 First boot downloads about 1.5GB and settles at about 5GB on disk, then generates
 a world, which takes a few minutes.
@@ -52,12 +50,12 @@ maps to a field in that template; the variable names are what you would use with
 | `7777` | UDP      | Game traffic. The only port the server binds.        |
 
 There is no separate query port — 7777/udp is the whole of it, verified with
-`ss -lunp` against a running server, which shows exactly one socket. Discovery is
-not the Steam master server; the server registers itself and players find it in
-the in-game browser. A second instance on the same box conventionally uses 7778.
+`ss -lunp` against a running server, which shows exactly one socket. The server
+registers itself and players find it in the in-game browser. A second instance on
+the same box conventionally uses 7778.
 
-**If you also run the ARK container on this box, its game port is 7777 too** and
-Docker refuses to start the second container. Move one of them.
+**If anything else on this box already listens on 7777**, Docker refuses to start
+this container. Change this port, or the other one.
 
 To change the port, three numbers have to agree: the container port, the host
 port, and `GAME_PORT`. Docker cannot tell the server what its host port is, so if
@@ -86,8 +84,8 @@ Dragonwilds keeps everything in one file:
 RSDragonwilds/Saved/Config/LinuxServer/DedicatedServer.ini
 ```
 
-and unlike V Rising, none of its settings have a command-line equivalent. The ini
-is the only channel, so the container writes to it.
+and none of its settings have a command-line equivalent. The ini is the only
+channel, so the container writes to it.
 
 It writes **five keys and nothing else**, on every start:
 
@@ -169,14 +167,14 @@ a footgun, and this is one command.
 Dragonwilds caps a server at 6 players, and that limit is not in
 `DedicatedServer.ini` — it lives in the engine's own game config. There is no
 field for it here because there is nothing useful to set it to. If you want to
-try raising it, two other containers pass it as a launch argument, which you can
-do through `GAME_PARAMS_EXTRA`:
+try raising it, it can be passed as a launch argument through
+`GAME_PARAMS_EXTRA`:
 
 ```
 -ini:Game:[/Script/Engine.GameSession]:MaxPlayers=8
 ```
 
-Whether a value above 6 actually works is unverified, by them and by this repo.
+Whether a value above 6 actually works is unverified.
 
 ## Stopping safely
 

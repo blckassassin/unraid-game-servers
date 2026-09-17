@@ -9,18 +9,15 @@
   <Support>https://github.com/blckassassin/unraid-game-servers/issues</Support>
   <Project>https://github.com/blckassassin/unraid-game-servers</Project>
   <Overview>
-ARK: Survival Ascended dedicated server.
+ARK: Survival Ascended dedicated server. Windows depot via SteamCMD, run under GE-Proton - both fetched on first start, so the image stays small.
 
-ASA ships Windows-only server binaries, so this container installs the Windows depot with SteamCMD and runs it under GE-Proton. Both SteamCMD and Proton are fetched on first start, so the image itself stays small.
+Plan for the size: about 15GB installed, and 16GB RAM is a sensible floor for a vanilla map. Put the appdata on an SSD or cache pool - ARK is heavy on random I/O and spinning disks make startup and saves noticeably slower.
 
-Heads up before you start: the game files are about 15GB installed and the server wants a lot of RAM (16GB is a sensible floor for a vanilla map, more with mods or players). Put the appdata on an SSD or a cache pool rather than the array - not for the space, but because ARK is heavy on random I/O and spinning disks make startup and world saves noticeably slower.
+First boot downloads about 13GB and then builds a Proton prefix. Expect a long, quiet first startup; check the logs rather than assuming it hung.
 
-First boot downloads about 13GB and then builds a Proton prefix. Expect a long, quiet first startup - check the logs rather than assuming it hung. Once the files are in place the server starts in well under a minute.
+A "config" shortcut at the top of the game files folder points at the config directory, so you can browse to it over SMB. Stop the container before editing - the server rewrites GameUserSettings.ini on shutdown.
 
-Config files are kept editable over SMB. A "config" shortcut is created at the top of the game files folder pointing at ShooterGame/Saved/Config/WindowsServer, so you can browse straight to it from Windows. Stop the container before editing - the server rewrites GameUserSettings.ini when it shuts down and will overwrite changes made while it is running.
-
-Only 7777/udp needs forwarding at your router. The old 27015 query port is vestigial in ASA because server discovery goes through Epic Online Services rather than Steam. Forward RCON only if you administer from outside your LAN.
-
+Only 7777/udp needs forwarding. Forward RCON only if you administer from outside your LAN.
 </Overview>
   <Category>GameServers:</Category>
   <TemplateURL>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/templates/ark-survival-ascended.xml</TemplateURL>

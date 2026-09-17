@@ -1,8 +1,8 @@
 # RuneScape: Dragonwilds — dedicated server
 
 A RuneScape: Dragonwilds dedicated server. The game ships a real Linux server
-binary, so unlike this author's ARK and V Rising images there is no Proton and no
-wine here — SteamCMD pulls the Linux depot and the server runs natively.
+binary, so there is no Proton and no wine — SteamCMD pulls the Linux depot and
+the server runs natively.
 
 First boot downloads about 1.5GB and settles at about 5GB on disk, then generates
 a world, which takes a few minutes.
@@ -53,7 +53,7 @@ services:
 | ------ | ----- | --------------------------------------------- |
 | `7777` | UDP   | Game traffic. The only port the server binds.  |
 
-There is no query port — Dragonwilds lists through EOS, not through Steam.
+There is no query port.
 
 To move it, the container port, the host port and `GAME_PORT` must all be the same
 number. Docker cannot tell the server what its host port is, so if `GAME_PORT`
