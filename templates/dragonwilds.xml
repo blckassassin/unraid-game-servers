@@ -24,6 +24,11 @@ Stopping does not save. The server autosaves every 5 minutes, so a stop costs at
   <License>MIT</License>
   <ExtraSearchTerms>runescape dragonwilds jagex survival dedicated server</ExtraSearchTerms>
   <Changes>
+###1.0.2 (2026-09-17)
+- The log now warns when Server Port is not 7777. Changing the port means changing three numbers - the Host Port, the Container Port and Server Port - and Unraid hides the Container Port behind the Edit button on the Game Port row. Miss it and the server starts, logs cleanly and shows green while no player can reach it, with no error anywhere. The warning is the signal that this is the thing to check.
+- Host networking is now documented as the supported way to run on a non-default port. Set Network Type to host and there is one number instead of three.
+- Correction to 1.0.0 below: 7777/udp is not the only socket the server binds. It also binds 8888/udp, a hardcoded world settings beacon, plus an ephemeral high port. 7777 remains the only port this container publishes and the only one to forward; whether anything needs to reach 8888 is untested.
+
 ###1.0.1 (2026-09-17)
 - Rewrote this description. It was three long paragraphs that opened by comparing this container to other servers; it is now shorter and stands on its own. No change to the image.
 
@@ -40,8 +45,8 @@ Initial release.
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <Requires>About 5GB once installed, from a 1.5GB download, so allow 8GB of free space for saves and updates. Roughly 2GB of RAM plus 1GB per player, so 8GB for a full server - the cap is 6 players. The array is fine; a cache drive or SSD makes world loads and saves noticeably quicker.</Requires>
 
-  <Config Name="Game Port" Target="7777" Default="7777" Mode="udp" Description="Game traffic. UDP, and the only port this server binds - there is no separate query port. This is the one to forward. To change it, set the Container Port, the Host Port and Server Port below all to the same number - Docker cannot tell the server what its host port is, so the three have to agree. If something else on this box already listens on 7777, Docker refuses to start this container - change this port, or the other one." Type="Port" Display="always" Required="true" Mask="false">7777</Config>
-  <Config Name="Server Port" Target="GAME_PORT" Default="7777" Mode="" Description="The port the server binds. Keep it equal to Game Port above, both the Container Port and the Host Port." Type="Variable" Display="always" Required="true" Mask="false">7777</Config>
+  <Config Name="Game Port" Target="7777" Default="7777" Mode="udp" Description="Game traffic, UDP. This is the one to forward, and there is no query port. To change it you must change THREE numbers to match: this Host Port box, the Container Port hidden behind the Edit button on this row, and Server Port below. Docker cannot tell the server what its host port is, so all three have to agree - and the Container Port is the one people miss, because it is not a field until you click Edit. Get it wrong and the server runs, looks healthy and reaches nobody; the log warns when Server Port is not 7777. Easier: set Network Type to host at the top of this page and there is only one number. If something else on this box already listens on 7777, Docker refuses to start this container - change this port, or the other one." Type="Port" Display="always" Required="true" Mask="false">7777</Config>
+  <Config Name="Server Port" Target="GAME_PORT" Default="7777" Mode="" Description="The port the server binds. Keep it equal to Game Port above - both the Container Port and the Host Port. With Network Type set to host there is no mapping, and this is the only port number there is." Type="Variable" Display="always" Required="true" Mask="false">7777</Config>
 
   <Config Name="Game Files" Target="/serverdata/serverfiles" Default="/mnt/user/appdata/dragonwilds" Mode="rw" Description="Where the server, saves and config live. About 5GB - see Requires below. Your worlds are under RSDragonwilds/Saved/SaveGames and your config is RSDragonwilds/Saved/Config/LinuxServer/DedicatedServer.ini." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dragonwilds</Config>
   <Config Name="SteamCMD" Target="/serverdata/steamcmd" Default="/mnt/user/appdata/steamcmd" Mode="rw" Description="SteamCMD itself. Small, and shareable with other SteamCMD containers." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/steamcmd</Config>
