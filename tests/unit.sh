@@ -395,8 +395,10 @@ check "a matching game port warns about nothing" "" \
     "$(GAME_PORT="7777" check_game_port)"
 check "a changed game port names both numbers" "yes" \
     "$(GAME_PORT="7780" check_game_port | grep -q 'GAME_PORT is 7780, but this image exposes 7777' && echo yes || echo no)"
-check "the warning names the field Unraid hides" "yes" \
-    "$(GAME_PORT="7780" check_game_port | grep -qi 'container port' && echo yes || echo no)"
+check "the warning names host networking as the only correct case" "yes" \
+    "$(GAME_PORT="7780" check_game_port | grep -qi 'host networking' && echo yes || echo no)"
+check "the warning says a bridge network forwards to the exposed port" "yes" \
+    "$(GAME_PORT="7780" check_game_port | grep -qi 'bridge network' && echo yes || echo no)"
 check "the warning does not stop the boot" "0" \
     "$(GAME_PORT="7780" check_game_port > /dev/null; echo $?)"
 
@@ -440,5 +442,25 @@ check "the dockerhub description documents the 8888 beacon" "yes" \
     "$(grep -q '8888' games/dragonwilds/docs/dockerhub.md && echo yes || echo no)"
 check "the README documents host networking as the port-change route" "yes" \
     "$(grep -q 'net=host\|network host' games/dragonwilds/README.md && echo yes || echo no)"
+
+# --- dragonwilds has one port field ------------------------------------------
+# Unraid renders a Type="Port" container port as a read-only line, so it is
+# frozen at whatever the template ships. Given that, the server must bind that
+# same number or the mapping forwards nowhere - which means GAME_PORT is not a
+# knob on a bridge network, and must not be presented as one. It stays reachable
+# for host networking, where there is no mapping and it is the only port there
+# is, so it is demoted rather than deleted.
+dw_server_port_row="$(grep -o '<Config Name="Server Port"[^>]*>' templates/dragonwilds.xml)"
+check "the template ships exactly one always-visible port field" "1" \
+    "$(grep -o '<Config Name="[^"]*"[^>]*Type="Port"[^>]*Display="always"' templates/dragonwilds.xml | wc -l)"
+check "Server Port is demoted out of the default view" "yes" \
+    "$(echo "${dw_server_port_row}" | grep -q 'Display="advanced"' && echo yes || echo no)"
+check "Server Port is no longer required" "yes" \
+    "$(echo "${dw_server_port_row}" | grep -q 'Required="false"' && echo yes || echo no)"
+check "Server Port defaults to the exposed port" "yes" \
+    "$(echo "${dw_server_port_row}" | grep -q 'Default="7777"' && echo yes || echo no)"
+check "the Game Port field no longer teaches the three-number rule" "yes" \
+    "$(grep -o '<Config Name="Game Port"[^>]*>' templates/dragonwilds.xml \
+        | grep -qi 'THREE numbers' && echo no || echo yes)"
 
 exit "$fail"
