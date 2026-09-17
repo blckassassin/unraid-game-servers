@@ -26,6 +26,10 @@ Only 7777/udp needs forwarding. Forward RCON only if you administer from outside
   <License>MIT</License>
   <ExtraSearchTerms>ark survival ascended asa dedicated server steamcmd proton</ExtraSearchTerms>
   <Changes>
+###1.5.2 (2026-09-17)
+- Internal tidy-up with no change to how the server behaves. The Proton and SteamCMD logic moved out of this container's startup script into shared code, which removes about 290 lines of duplication. Smoke tested end to end before release: full 12GB install, Proton prefix build, and the server reporting a successful startup.
+- This description is shorter and no longer references the other containers in this repository.
+
 ###1.5.1 (2026-09-04)
 - The game port can now actually be moved. Setting a different port used to leave the log reporting a number players could not connect to. Container Port, Host Port and Server Port must all match; the template explains this on each field.
 
