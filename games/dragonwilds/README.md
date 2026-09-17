@@ -45,22 +45,63 @@ maps to a field in that template; the variable names are what you would use with
 
 ## Ports
 
-| Port   | Protocol | What for                                            |
-| ------ | -------- | --------------------------------------------------- |
-| `7777` | UDP      | Game traffic. The only port the server binds.        |
+| Port   | Protocol | What for                                                 |
+| ------ | -------- | -------------------------------------------------------- |
+| `7777` | UDP      | Game traffic. The one to forward.                        |
+| `8888` | UDP      | World settings beacon. Hardcoded, not published.         |
 
-There is no separate query port — 7777/udp is the whole of it, verified with
-`ss -lunp` against a running server, which shows exactly one socket. The server
-registers itself and players find it in the in-game browser. A second instance on
-the same box conventionally uses 7778.
+`7777/udp` carries the game, and it is the only port this container publishes.
+There is no separate query port — the server registers itself and players find it
+in the in-game browser. A second instance on the same box conventionally uses
+7778.
+
+A running server binds two more sockets. One is `8888/udp`, its world settings
+beacon, which the engine announces as `LogDomGameMode: World settings beacon
+listening on port 8888`; the number is hardcoded and cannot be moved. The other
+is an ephemeral high port. Neither is published by this container, and whether
+any client needs to reach the beacon is **untested** — nothing has been reported
+broken without it. If you decide to map it, map it as `8888:8888/udp`, and note
+that a second instance on the same host then collides on it.
 
 **If anything else on this box already listens on 7777**, Docker refuses to start
 this container. Change this port, or the other one.
 
-To change the port, three numbers have to agree: the container port, the host
-port, and `GAME_PORT`. Docker cannot tell the server what its host port is, so if
-`GAME_PORT` differs from the container port nothing reaches the server, and if it
-differs from the host port the log reports a number players cannot use.
+### Changing the port
+
+Three numbers have to agree: the **host port**, the **container port**, and
+`GAME_PORT`. Docker cannot tell the server what its host port is, so the server
+has to be told separately, and if the container port is not the same number the
+forward lands on a port nothing is listening on.
+
+On Unraid this is the easiest way to break this container, because the container
+port is not a field until you click **Edit** on the Game Port row — until then it
+is a read-only `Container Port: 7777` line sitting under a box that already shows
+your new number. Change the two visible fields and you get a server that starts,
+logs cleanly, reports healthy and green, and cannot be reached by anybody. An
+external probe returns ICMP port-unreachable, which reads as "not forwarded" and
+sends you hunting your router instead.
+
+The container prints a warning whenever `GAME_PORT` is not 7777. It cannot tell
+whether you also fixed the container port — nothing inside a container can see
+its own host mapping — so the warning appears either way, and it is the signal
+that this is the thing to check.
+
+**Host networking avoids all of it.** With `--net=host` there is one number and
+nothing to keep in sync:
+
+```sh
+docker run -d --name dragonwilds --network host \
+  -e GAME_PORT=7780 \
+  -e OWNER_ID="your-player-id" \
+  -v /path/to/serverfiles:/serverdata/serverfiles \
+  -v /path/to/steamcmd:/serverdata/steamcmd \
+  ferment9348/dragonwilds:latest
+```
+
+On Unraid, set **Network Type** to `host`; the port fields disappear and the
+server binds `GAME_PORT` on the host directly. This is the supported way to run
+on a non-default port. The trade is the usual one: no network isolation, and 8888
+lands on the host too, so one instance per box.
 
 ## Configuration
 

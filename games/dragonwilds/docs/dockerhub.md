@@ -49,16 +49,44 @@ services:
 
 ## Ports
 
-| Port   | Proto | Purpose                                       |
-| ------ | ----- | --------------------------------------------- |
-| `7777` | UDP   | Game traffic. The only port the server binds.  |
+| Port   | Proto | Purpose                                            |
+| ------ | ----- | -------------------------------------------------- |
+| `7777` | UDP   | Game traffic. The one to forward.                  |
+| `8888` | UDP   | World settings beacon. Hardcoded, not published.   |
 
-There is no query port.
+There is no query port. `7777/udp` is the only port this container publishes.
 
-To move it, the container port, the host port and `GAME_PORT` must all be the same
-number. Docker cannot tell the server what its host port is, so if `GAME_PORT`
-differs from the container port nothing reaches the server, and if it differs from
-the host port the log reports a port players cannot use.
+A running server also binds `8888/udp` — its world settings beacon, logged as
+`World settings beacon listening on port 8888` — and an ephemeral high port. The
+beacon's number is hardcoded and cannot be moved. Whether any client needs to
+reach it is untested; nothing has been reported broken without it.
+
+### Changing the port
+
+Three numbers have to agree: the host port, the container port and `GAME_PORT`.
+Docker cannot tell the server what its host port is, so it has to be told
+separately, and if the container port is not the same number the forward lands on
+a port nothing is listening on. The result is a server that starts, logs cleanly
+and reports healthy while no player can reach it. The container warns whenever
+`GAME_PORT` is not 7777; it cannot see its own host mapping, so it cannot tell
+you whether the rest is right.
+
+On Unraid this is easy to get wrong, because the container port is not an
+editable field until you click **Edit** on the Game Port row.
+
+**Host networking avoids it entirely** — one number, nothing to keep in sync:
+
+```bash
+docker run -d --name dragonwilds --network host \
+  -e GAME_PORT=7780 \
+  -e OWNER_ID="your-player-id" \
+  -v /path/to/serverfiles:/serverdata/serverfiles \
+  -v /path/to/steamcmd:/serverdata/steamcmd \
+  ferment9348/dragonwilds:latest
+```
+
+On Unraid, set Network Type to `host`. The trade is no network isolation, and
+8888 lands on the host too, so one instance per box.
 
 ## Common settings
 

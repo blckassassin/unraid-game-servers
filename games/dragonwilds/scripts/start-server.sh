@@ -46,6 +46,11 @@ SAVE_DIR="${SAVED_DIR}/SaveGames"
 #   [/Script/Dominion.DedicatedServerSettings]
 #   AdminPassword=...
 INI_SECTION="/Script/Dominion.DedicatedServerSettings"
+# What this image's Dockerfile EXPOSEs. Not the same thing as GAME_PORT, which is
+# what the server is told to bind - see check_game_port below for why the two
+# being different is worth saying out loud. A unit test asserts this tracks the
+# EXPOSE line.
+EXPOSED_PORT="7777"
 
 SERVER_PID=""
 SHUTTING_DOWN="false"
@@ -204,6 +209,49 @@ check_owner_id() {
 }
 
 # -----------------------------------------------------------------------------
+# GAME_PORT against the port this image publishes.
+#
+# The port lives in three places that must agree: the host port, the container
+# port, and GAME_PORT here. Docker cannot tell the server what its host port is,
+# so the server has to be told separately - and if the container port is not the
+# same number, the forward lands on a port nothing is listening on.
+#
+# On Unraid that is easy to get wrong in one specific way. The container port is
+# not a field until you click Edit on the Game Port row: it renders as a
+# read-only "Container Port: 7777" line underneath a box that already shows the
+# new number. So a user changing the port edits the two visible fields, both
+# become 7780, the container port stays 7777, and Docker forwards host:7780 to a
+# container port the server never binds. Observed on a live server:
+#
+#   docker inspect  {"7777/udp": [{"HostPort": "7780"}]}
+#   /proc/net/udp   listening on 7780, nothing on 7777
+#
+# The server starts, the log is clean, the container is healthy and green, and no
+# player can reach it. An external probe gets ICMP port-unreachable from the
+# container, which reads as "port not forwarded" and sends the operator hunting
+# their router instead.
+#
+# This cannot be a hard fail the way check_owner_id is. From inside the container
+# a correctly configured 7780 setup and a broken one are identical - the host
+# mapping is not visible here. So it warns, unconditionally, whenever GAME_PORT
+# is not the exposed port. A correct setup gets four lines it can ignore; a
+# broken one gets the only signal it will ever get.
+# -----------------------------------------------------------------------------
+check_game_port() {
+    [ "${GAME_PORT}" = "${EXPOSED_PORT}" ] && return 0
+
+    echo "---GAME_PORT is ${GAME_PORT}, but this image exposes ${EXPOSED_PORT}.---"
+    echo "---If the Container Port in your port mapping is not ALSO ${GAME_PORT},---"
+    echo "---nothing will reach this server and it will look perfectly healthy.---"
+    echo "---On Unraid that field is hidden behind the Edit button on the Game---"
+    echo "---Port row; the box you already changed is the HOST port.---"
+    echo "---"
+    echo "---Host networking avoids this entirely - one number, nothing to keep---"
+    echo "---in sync. See the README.---"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
 # Shutdown. It does NOT save, and nothing here can make it.
 #
 # Measured 2026-09-14 over a 20 minute run. Two facts:
@@ -311,6 +359,7 @@ chmod +x "${SERVER_BIN}" 2>/dev/null || true
 
 write_config || exit 1
 check_owner_id || exit 1
+check_game_port
 
 mkdir -p "${SAVE_DIR}"
 

@@ -66,8 +66,10 @@ COPY shared/scripts/ /opt/scripts/
 COPY games/dragonwilds/scripts/ /opt/scripts/
 RUN chmod -R 755 /opt/scripts
 
-# 7777/udp game traffic, and the only port the server binds. Note this collides
-# with ASA's game port on a default Unraid box; see the README.
+# 7777/udp game traffic. This is the only port the container publishes, but NOT
+# the only socket the server binds: it also binds a hardcoded 8888/udp world
+# settings beacon and an ephemeral high port, neither of which is mapped.
+# start-server.sh's EXPOSED_PORT must track this number - a unit test asserts it.
 EXPOSE 7777/udp
 
 VOLUME ["/serverdata/steamcmd", "/serverdata/serverfiles"]
