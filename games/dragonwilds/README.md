@@ -68,26 +68,28 @@ this container. Change this port, or the other one.
 
 ### Changing the port
 
-Three numbers have to agree: the **host port**, the **container port**, and
-`GAME_PORT`. Docker cannot tell the server what its host port is, so the server
-has to be told separately, and if the container port is not the same number the
-forward lands on a port nothing is listening on.
+**Change `Game Port` and nothing else.** On Unraid that is the one box; with
+`docker run` it is the left-hand side of `-p 7780:7777/udp`. The server always
+binds 7777 inside the container, the mapping points at 7777, and the two cannot
+drift apart.
 
-On Unraid this is the easiest way to break this container, because the container
-port is not a field until you click **Edit** on the Game Port row — until then it
-is a read-only `Container Port: 7777` line sitting under a box that already shows
-your new number. Change the two visible fields and you get a server that starts,
-logs cleanly, reports healthy and green, and cannot be reached by anybody. An
-external probe returns ICMP port-unreachable, which reads as "not forwarded" and
-sends you hunting your router instead.
+`GAME_PORT` is not a field you should touch on a bridge network, and since 1.0.3
+it sits in the advanced section defaulted to 7777. It is the port the server
+binds *inside* the container, which the mapping already points at. Setting it to
+anything else gives you a server that starts, logs cleanly, reports healthy and
+green, and cannot be reached by anybody — Docker forwards to 7777 and nothing is
+listening there. An external probe returns ICMP port-unreachable, which reads as
+"not forwarded" and sends you hunting your router instead. The container warns if
+it sees that combination.
 
-The container prints a warning whenever `GAME_PORT` is not 7777. It cannot tell
-whether you also fixed the container port — nothing inside a container can see
-its own host mapping — so the warning appears either way, and it is the signal
-that this is the thing to check.
+Why the server cannot simply bind your chosen port: Unraid renders a template's
+container port as a read-only line rather than a field, so it is frozen at 7777
+whatever you do. Given that, the server binding 7777 is the only arrangement that
+can't be wrong. Two numbers, not three.
 
-**Host networking avoids all of it.** With `--net=host` there is one number and
-nothing to keep in sync:
+**Host networking is the exception.** With `--net=host` there is no mapping and
+no container port, so `GAME_PORT` becomes the only number there is and you set it
+directly:
 
 ```sh
 docker run -d --name dragonwilds --network host \
@@ -112,7 +114,7 @@ lands on the host too, so one instance per box.
 | `WORLD_NAME`        | `Standard`           | World and save-file name, and probably what players type to find you. See below. |
 | `SRV_ADMIN_PWD`     | empty                | Admin password. See below.                     |
 | `SRV_PWD`           | empty                | Join password. Blank means open.               |
-| `GAME_PORT`         | `7777`               | The port the server binds.                     |
+| `GAME_PORT`         | `7777`               | The port the server binds *inside* the container. Leave it on bridge; set it under `--net=host`. |
 | `GAME_PARAMS_EXTRA` | empty                | Appended to the launch line verbatim.          |
 | `STOP_TIMEOUT`      | `30`                 | Seconds to wait for the engine to exit. Not a save window — see below. |
 | `VALIDATE`          | empty                | `true` makes SteamCMD verify every file.       |

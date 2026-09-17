@@ -63,18 +63,18 @@ reach it is untested; nothing has been reported broken without it.
 
 ### Changing the port
 
-Three numbers have to agree: the host port, the container port and `GAME_PORT`.
-Docker cannot tell the server what its host port is, so it has to be told
-separately, and if the container port is not the same number the forward lands on
-a port nothing is listening on. The result is a server that starts, logs cleanly
-and reports healthy while no player can reach it. The container warns whenever
-`GAME_PORT` is not 7777; it cannot see its own host mapping, so it cannot tell
-you whether the rest is right.
+Change the host side of the mapping and nothing else — the left-hand number in
+`-p 7780:7777/udp`. The server always binds 7777 inside the container and the
+mapping points at 7777, so the two cannot disagree.
 
-On Unraid this is easy to get wrong, because the container port is not an
-editable field until you click **Edit** on the Game Port row.
+Leave `GAME_PORT` at 7777 on a bridge network. It is the port the server binds
+*inside* the container, not the port players use. Setting it to anything else
+gives a server that starts, logs cleanly and reports healthy while Docker
+forwards to 7777 with nothing listening there. The container warns if it sees
+that combination.
 
-**Host networking avoids it entirely** — one number, nothing to keep in sync:
+**Host networking is the exception** — no mapping, no container port, so
+`GAME_PORT` is the only number there is:
 
 ```bash
 docker run -d --name dragonwilds --network host \
@@ -97,7 +97,7 @@ On Unraid, set Network Type to `host`. The trade is no network isolation, and
 | `WORLD_NAME`        | `Standard`           | World and save-file name, and most likely what players type to find you. |
 | `SRV_ADMIN_PWD`     | empty                | Admin password. Blank means the server generates one and prints it in the log. |
 | `SRV_PWD`           | empty                | Join password. Blank means open.          |
-| `GAME_PORT`         | `7777`               | The port the server binds.                |
+| `GAME_PORT`         | `7777`               | The port the server binds *inside* the container. Leave it on bridge. |
 | `STOP_TIMEOUT`      | `30`                 | Seconds to wait for the engine to exit. Not a save window. |
 | `VALIDATE`          | empty                | `true` makes SteamCMD verify every file.  |
 | `UID` / `GID`       | `99` / `100`         | Unraid's defaults. Neither may be 0 — the server refuses to run as root. |

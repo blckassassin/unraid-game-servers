@@ -17,6 +17,9 @@
 #    override for any of its settings. See set_ini_key below.
 # 4. An empty OwnerId is checked for explicitly, because the server's own
 #    response to one is to keep running and serve nobody.
+# 5. GAME_PORT is fixed at the exposed port on a bridge network and is not a
+#    template field. Unraid freezes the container port, so the server has to bind
+#    it. See check_game_port below.
 
 set -u
 umask "${UMASK:-000}"
@@ -209,45 +212,51 @@ check_owner_id() {
 }
 
 # -----------------------------------------------------------------------------
-# GAME_PORT against the port this image publishes.
+# GAME_PORT, and why it is not a knob on a bridge network.
 #
-# The port lives in three places that must agree: the host port, the container
-# port, and GAME_PORT here. Docker cannot tell the server what its host port is,
-# so the server has to be told separately - and if the container port is not the
-# same number, the forward lands on a port nothing is listening on.
+# Unraid renders a template's Type="Port" entry with the container port as a
+# read-only line - it is not a field until you click Edit on that row, and on
+# some installs not even then. So the container port is, in practice, frozen at
+# whatever the template ships: 7777.
 #
-# On Unraid that is easy to get wrong in one specific way. The container port is
-# not a field until you click Edit on the Game Port row: it renders as a
-# read-only "Container Port: 7777" line underneath a box that already shows the
-# new number. So a user changing the port edits the two visible fields, both
-# become 7780, the container port stays 7777, and Docker forwards host:7780 to a
-# container port the server never binds. Observed on a live server:
+# That single fact decides the design. If the container port cannot move, the
+# server must bind 7777, because the port mapping forwards there and nowhere
+# else. A user who changes the port changes the HOST side of the mapping; the
+# inside of the container stays 7777 forever. Two numbers, not three.
+#
+# It used to be three, and the third was this variable. The template exposed it
+# as "Server Port" next to a "Game Port" mapping row, which is the same words
+# twice, and changing the port the obvious way set both visible fields to 7780
+# while the container port stayed 7777. Observed on a live server:
 #
 #   docker inspect  {"7777/udp": [{"HostPort": "7780"}]}
 #   /proc/net/udp   listening on 7780, nothing on 7777
 #
-# The server starts, the log is clean, the container is healthy and green, and no
-# player can reach it. An external probe gets ICMP port-unreachable from the
-# container, which reads as "port not forwarded" and sends the operator hunting
-# their router instead.
+# Docker forwarded host:7780 to a container port the server never bound. The
+# server started, the log was clean, the container was healthy and green, and no
+# player could reach it. An external probe got ICMP port-unreachable from the
+# container, which reads as "not forwarded" and sends the operator hunting their
+# router. There was no error anywhere.
 #
-# This cannot be a hard fail the way check_owner_id is. From inside the container
-# a correctly configured 7780 setup and a broken one are identical - the host
-# mapping is not visible here. So it warns, unconditionally, whenever GAME_PORT
-# is not the exposed port. A correct setup gets four lines it can ignore; a
-# broken one gets the only signal it will ever get.
+# So GAME_PORT is no longer a template field. It survives as an environment
+# variable for exactly one case: host networking, where there is no mapping and
+# no container port, and the bind port is genuinely the only number there is.
+#
+# Which is what this check says. It cannot detect the network mode - a container
+# on a bridge and a container on the host see the same thing from in here - so it
+# states the condition and lets the operator match it against what they set.
 # -----------------------------------------------------------------------------
 check_game_port() {
     [ "${GAME_PORT}" = "${EXPOSED_PORT}" ] && return 0
 
     echo "---GAME_PORT is ${GAME_PORT}, but this image exposes ${EXPOSED_PORT}.---"
-    echo "---If the Container Port in your port mapping is not ALSO ${GAME_PORT},---"
-    echo "---nothing will reach this server and it will look perfectly healthy.---"
-    echo "---On Unraid that field is hidden behind the Edit button on the Game---"
-    echo "---Port row; the box you already changed is the HOST port.---"
+    echo "---That is correct ONLY under host networking, where there is no port---"
+    echo "---mapping and this is the only port number involved.---"
     echo "---"
-    echo "---Host networking avoids this entirely - one number, nothing to keep---"
-    echo "---in sync. See the README.---"
+    echo "---On a bridge network it is wrong. The mapping forwards to ${EXPOSED_PORT} inside---"
+    echo "---this container, so nothing will reach a server bound to ${GAME_PORT} - and it---"
+    echo "---will still look perfectly healthy. Leave GAME_PORT at ${EXPOSED_PORT} and change---"
+    echo "---the host side of the mapping instead; that is the port players use.---"
     return 0
 }
 
