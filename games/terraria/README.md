@@ -51,7 +51,7 @@ makes the log line and Terraria's own `Listening on port` match what players
 type. A mismatch is quiet rather than loud: bind port different from the
 container port and nothing reaches the server at all.
 
-The container port is namespaced, so a Terraria on 7777 and an ARK on 7777 never
+The container port is namespaced, so two containers each on 7777 never
 collide however they are mapped. Only host ports have to be unique, and only
 within a protocol.
 
