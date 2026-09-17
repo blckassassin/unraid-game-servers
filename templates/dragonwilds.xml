@@ -24,6 +24,9 @@ Stopping does not save. The server autosaves every 5 minutes, so a stop costs at
   <License>MIT</License>
   <ExtraSearchTerms>runescape dragonwilds jagex survival dedicated server</ExtraSearchTerms>
   <Changes>
+###1.0.1 (2026-09-17)
+- Rewrote this description. It was three long paragraphs that opened by comparing this container to other servers; it is now shorter and stands on its own. No change to the image.
+
 ###1.0.0 (2026-09-14)
 Initial release.
 
