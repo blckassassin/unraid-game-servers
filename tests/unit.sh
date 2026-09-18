@@ -456,4 +456,41 @@ done
 check "the README notes the NAT hairpin caveat" "yes" \
     "$(grep -qi 'hairpin' games/dragonwilds/README.md && echo yes || echo no)"
 
+# --- every game has its own guide --------------------------------------------
+# ASA's guide used to be the root README, because an installed CA template's
+# <ReadMe> freezes its URL forever and those users never receive a new template.
+# It moved to games/ark-survival-ascended/README.md on 2026-09-18, so the root
+# README has to keep a pointer to it: that root URL is still what a pre-move ASA
+# template fetches, and dropping the pointer strands every one of those installs.
+for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+    check "${slug} has its own README" "yes" \
+        "$([ -f "games/${slug}/README.md" ] && echo yes || echo no)"
+    check "${slug}'s template points at its own README" "yes" \
+        "$(grep -q "<ReadMe>.*/games/${slug}/README.md</ReadMe>" "templates/${slug}.xml" \
+            && echo yes || echo no)"
+done
+
+check "the root README still points at the ASA guide" "yes" \
+    "$(grep -q 'games/ark-survival-ascended/README.md' README.md && echo yes || echo no)"
+check "the root README is an index, not one game's guide" "yes" \
+    "$(head -n1 README.md | grep -qi 'ARK' && echo no || echo yes)"
+
+# Each game's guide stands alone - see the Constraints note on self-contained
+# docs. A guide naming another container in this repo is the drift that rule
+# exists to catch. Siblings are named per game rather than filtered out of the
+# file, because "V Rising" does not contain the slug "v-rising" and a filter
+# lets a guide match itself.
+dw_siblings() {  # dw_siblings <slug> -> regex of the OTHER games' names
+    case "$1" in
+        ark-survival-ascended) echo 'dragonwilds|terraria|v rising' ;;
+        terraria)              echo 'ark: survival|ark survival|dragonwilds|v rising' ;;
+        v-rising)              echo 'ark: survival|ark survival|dragonwilds|terraria' ;;
+        dragonwilds)           echo 'ark: survival|ark survival|terraria|v rising' ;;
+    esac
+}
+for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+    check "games/${slug}/README.md names no sibling container" "yes" \
+        "$(grep -qiE "$(dw_siblings "${slug}")" "games/${slug}/README.md" && echo no || echo yes)"
+done
+
 exit "$fail"

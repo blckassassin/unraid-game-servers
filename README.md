@@ -1,397 +1,77 @@
-# ARK: Survival Ascended — Docker server for Unraid
-
-> This page documents the ARK: Survival Ascended container.
+# unraid-game-servers
 
 [![build](https://github.com/blckassassin/unraid-game-servers/actions/workflows/build.yml/badge.svg)](https://github.com/blckassassin/unraid-game-servers/actions/workflows/build.yml)
-[![docker](https://img.shields.io/docker/v/ferment9348/ark-survival-ascended?sort=semver&label=docker%20hub)](https://hub.docker.com/r/ferment9348/ark-survival-ascended)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A SteamCMD-based ASA dedicated server container, laid out the way ich777's game
-server images are, so it should feel familiar if you were running his: the same
-`/serverdata/steamcmd` + `/serverdata/serverfiles` split, the same `UID`/`GID`/
-`VALIDATE`/`USERNAME` environment variables, the same "download everything on
-first boot so the image stays small" approach.
+Dedicated game server containers for Unraid, each with a Community Applications
+template. They are ordinary Docker images and run anywhere, but the defaults,
+the field names and the documentation are all aimed at Unraid.
 
-The one structural difference is Proton. Wildcard still ships no native Linux
-server binary for ASA, so this installs the **Windows** depot (SteamCMD is told
-`+@sSteamCmdForcePlatformType windows`) and runs `ArkAscendedServer.exe` under
-GE-Proton.
+> **Looking for the ARK guide?** It moved to
+> [games/ark-survival-ascended/README.md](games/ark-survival-ascended/README.md).
+> This page used to be that guide, and older installed templates still link here.
 
-## What this one does differently
+## The containers
 
-The download is the easy part. Almost everything that goes wrong with a
-dedicated ASA server happens afterwards, and this container is built around
-four of those failures in particular.
+| Game | Guide | Image | Runs as |
+| --- | --- | --- | --- |
+| ARK: Survival Ascended | [guide](games/ark-survival-ascended/README.md) | [`ferment9348/ark-survival-ascended`](https://hub.docker.com/r/ferment9348/ark-survival-ascended) | Windows depot under GE-Proton |
+| RuneScape: Dragonwilds | [guide](games/dragonwilds/README.md) | [`ferment9348/dragonwilds`](https://hub.docker.com/r/ferment9348/dragonwilds) | Native Linux binary |
+| Terraria | [guide](games/terraria/README.md) | [`ferment9348/terraria`](https://hub.docker.com/r/ferment9348/terraria) | Native Linux binary |
+| V Rising | [guide](games/v-rising/README.md) | [`ferment9348/v-rising`](https://hub.docker.com/r/ferment9348/v-rising) | Windows depot under GE-Proton + Xvfb |
 
-**You can actually edit the config files.** Getting an ini file editable over
-SMB from a Windows box needs three things to line up at once: the files have to
-be owned by the right uid, they have to carry permissive modes, and every
-directory above them has to be traversable. Permissive files behind a locked
-parent are still unreachable, which is why the top-level mode defaults to `775`
-rather than the tighter `770` you might expect. The permission pass runs on
-every start *and* again on shutdown, so it repairs a migrated install or files
-wine created with its own tight modes, not just the ones created from here on.
-`CONFIG_UMASK` translates a plain umask into the two modes it implies, applying
-them to files and directories separately so directories keep the execute bit
-that makes them possible to enter. Full detail in
-[Editing the configs over SMB](#editing-the-configs-over-smb-from-windows).
-
-**Stopping the container saves the world.** ARK writes its save on exit, so a
-hard kill is how people lose hours. On `docker stop` this sends `SaveWorld` over
-RCON, waits, sends `DoExit`, and only kills the wine prefix if the server is
-still up after `STOP_TIMEOUT`. That is also why the entrypoint deliberately does
-not use process-group signalling — it would deliver SIGTERM straight to the wine
-processes and skip the save entirely.
-
-**The container never overwrites your edits.** `GameUserSettings.ini` is seeded
-once, with RCON enabled, and then left alone permanently — there is no code path
-here that rewrites a config file you may have changed. ARK itself is a different
-matter: it rewrites that file when it shuts down, so stop the container before
-editing rather than while it runs.
-
-**The install is located, not assumed.** The server binary is found by searching
-for it rather than by hardcoding `ShooterGame/Binaries/Win64`. That layout has
-shifted before, and it means an existing install laid out by some other setup is
-found rather than ignored.
-
-Two smaller things. GE-Proton splits its releases by architecture, and the ARM
-build sorts first in the release listing, so the x86_64 tarball is selected
-explicitly rather than by taking whichever tarball appears first; pinning
-accepts either the release tag or the full asset name. And if GitHub is
-unreachable or rate-limiting you, the container falls back to whatever Proton
-build is already on disk instead of refusing to boot. The RCON client is a short
-Python script using nothing outside the standard library, so there is no extra
-package to install or keep current just to send `SaveWorld`.
-
-## Before you start
-
-- **Disk:** about 15GB installed, growing with saves and mods. Put it on a cache
-  pool or SSD share rather than the array — not for the space, but because ARK
-  is heavy on random I/O and spinning disks make startup and world saves
-  noticeably slower.
-- **RAM:** 16GB is a sensible floor for a vanilla map. Mods and players push it
-  well past that. ASA is considerably hungrier than ASE.
-- **First boot is slow and quiet.** A ~13GB download, then Proton builds its
-  prefix, then the server does its own startup — around 45 seconds once the
-  files are in place. Watch the logs rather than assuming it has hung.
-
-## Get the image
-
-```bash
-docker pull ferment9348/ark-survival-ascended:latest
-```
-
-Tagged releases are published as `:1.2.3` and `:1.2`, and `:latest` always points
-at the most recent release rather than at the tip of `main`.
-
-Or build it yourself — on Unraid you can do this on the server itself:
-
-```bash
-git clone https://github.com/blckassassin/unraid-game-servers.git
-cd unraid-game-servers
-docker build -t ferment9348/ark-survival-ascended:latest .
-```
-
-If you build under a different name, change `<Repository>` in
-`templates/ark-survival-ascended.xml` to match.
+Each guide is self-contained: everything you need for that container is on its
+own page, and none of them assumes you run any of the others.
 
 ## Install on Unraid
 
-1. Copy `templates/ark-survival-ascended.xml` to
-   `/boot/config/plugins/dockerMan/templates-user/`.
-2. Docker tab → **Add Container** → pick `ARK-Survival-Ascended` from the
-   template dropdown.
-3. Set your paths, server name and admin password, then apply.
+All four are in **Community Applications** — search the game's name. The
+template fills in sensible defaults; the only field you normally must supply is
+whatever that game uses to identify you (ARK needs nothing, Dragonwilds needs
+your in-game Player ID).
 
-## Ports
+To install by hand instead, each guide carries a `docker run` and a
+`docker-compose.yml` you can paste.
 
-| Port  | Proto | What it does                                              |
-| ----- | ----- | --------------------------------------------------------- |
-| 7777  | UDP   | Game traffic. **The only one you have to forward.**        |
-| 7778  | UDP   | Peer port. Rarely needed; worth trying for flaky connects. |
-| 27015 | UDP   | Legacy Steam query port. Vestigial in ASA — see below.     |
-| 27020 | TCP   | RCON. Forward only if you administer from outside the LAN. |
+## Layout
 
-Server discovery in ASA runs through Epic Online Services, not Steam's A2S query
-protocol, so you do **not** need to forward 27015 for your server to appear in
-the Unofficial list. It is mapped only because some third-party tooling still
-expects it to exist.
+| Path | What it is |
+| --- | --- |
+| `games/<slug>/Dockerfile` | Image definition. Built with the repo root as context. |
+| `games/<slug>/README.md` | That game's guide, and what its template links to. |
+| `games/<slug>/scripts/` | Game-specific scripts, copied to `/opt/scripts`. |
+| `games/<slug>/docs/dockerhub.md` | Docker Hub long description, synced by CI on release. |
+| `games/<slug>/docker-compose.yml` | Local testing only — uses uid/gid 1000, not Unraid's 99/100. |
+| `shared/scripts/` | Common entrypoint, SteamCMD and Proton layers, RCON client. |
+| `templates/<slug>.xml` | Community Applications template. |
+| `ca_profile.xml` | CA repository profile covering every game here. |
+| `tests/` | Plain-assertion unit tests and the Terraria end-to-end test. |
+| `tools/icongen/` | Generates the per-game icon PNGs from source art. |
 
-To run the game on a different port, change it in three places to the same
-number: the mapping's container port, the mapping's host port, and `GAME_PORT`.
-Docker gives the container no way to discover which host port it was published
-on, so the server can only report the number it binds — keeping the three equal
-is what makes the startup log name the port players actually type. A mismatch is
-quiet rather than loud: a bind port different from the container port leaves
-nothing behind the mapping and no error in the log. The peer port is derived by
-the engine as game port + 1 and has no variable, so move that mapping to match.
+## Working on this
 
-The query and RCON ports need none of this. Nothing reports them back to you, so
-mapping a different host port to them works on its own.
+Build any one image from the repo root:
 
-Container ports are namespaced, so this server holding 7777 and another game
-container holding 7777 never collide however they are mapped. Only host ports
-have to be unique, and only within a protocol.
-
-## Configuration
-
-Environment variables of note:
-
-| Variable            | Default          | Notes                                                                     |
-| ------------------- | ---------------- | ------------------------------------------------------------------------- |
-| `SERVER_NAME`       | `ASA Server`     | Session name in the server browser.                                        |
-| `MAP`               | `TheIsland_WP`   | Needs the `_WP` suffix — the bare ASE name will not load.                  |
-| `MAX_PLAYERS`       | `20`             | Becomes `-WinLiveMaxPlayers`.                                              |
-| `GAME_PORT`         | `7777`           | Port the server binds and reports in the log. Keep it equal to both sides of the port mapping. |
-| `SRV_PWD`           | empty            | Join password. Blank for an open server.                                   |
-| `SRV_ADMIN_PWD`     | `adminpassword`  | Admin **and** RCON password. Change it.                                    |
-| `MODS`              | empty            | Comma-separated CurseForge project IDs.                                    |
-| `CROSSPLAY`         | `false`          | `true` adds `-crossplay` so Epic players can join.                         |
-| `BATTLEYE`          | `false`          | `false` passes `-NoBattlEye`.                                              |
-| `GAME_PARAMS_EXTRA` | empty            | Extra dash flags, space separated.                                         |
-| `QUERY_PARAMS_EXTRA`| empty            | Extra `?key=value` pairs, no leading `?`.                                  |
-| `CLUSTER_ID`        | empty            | Same value on every server in a cluster.                                   |
-| `PROTON_VERSION`    | `GE-Proton10-34` | Pinned deliberately — see below. `latest` is opt-in.                       |
-| `VALIDATE`          | empty            | `true` makes SteamCMD verify every file on start. Slow.                    |
-| `DEBUG`             | `false`          | `true` captures verbose wine output and a Proton log. See below.           |
-| `STOP_TIMEOUT`      | `120`            | Seconds allowed for a graceful save before force kill.                     |
-| `FIX_PERMS`         | `true`           | Keeps the `Saved` tree editable over SMB. See below.                       |
-| `CONFIG_UMASK`      | inherits `UMASK` | umask applied to the `Saved` tree. See below.                              |
-| `DATA_PERM`         | `775`            | Mode on the top-level server files folder.                                 |
-| `UMASK`             | `000`            | New files 666, new directories 777.                                        |
-
-### The launch-argument traps
-
-ASA moved several settings off the `?`-string and onto dash flags, and the old
-forms are **silently ignored** rather than erroring:
-
-- `-WinLiveMaxPlayers=N` sets the player cap. `?MaxPlayers=` does nothing.
-- `-port=N` sets the game port. `?Port=` does nothing.
-- `ServerAdminPassword` must be the **last** `?` argument — anything after it
-  gets swallowed into the password value. The script already handles this, but
-  keep it in mind if you add your own `QUERY_PARAMS_EXTRA`.
-- Mods are CurseForge project IDs, not Steam Workshop IDs. A Workshop-only mod
-  is not an ASA mod.
-
-### INI files
-
-`GameUserSettings.ini` and `Game.ini` live in:
-
-```
-<serverfiles>/ShooterGame/Saved/Config/WindowsServer/
+```sh
+docker build -f games/dragonwilds/Dockerfile -t dragonwilds-test .
 ```
 
-That path says `WindowsServer` even though you are on Linux — you are running
-the Windows binary, and ASA has no `LinuxServer` variant.
+The checks that must pass before a change ships:
 
-For convenience a `config` symlink is created at the top of the game files
-folder, so you can also reach them at `<serverfiles>/config/`. If your Samba
-setup has `follow symlinks` disabled the shortcut will not show up over the
-network — use the full path in that case.
-
-The container seeds `GameUserSettings.ini` with RCON enabled on first run and
-then **never touches it again**, so your edits are safe.
-
-**Stop the container before editing.** ARK rewrites `GameUserSettings.ini` when
-it shuts down, so changes you make while it is running get overwritten.
-
-## Editing the configs over SMB from Windows
-
-This is set up to work out of the box. Three things have to line up, and the
-container handles all of them:
-
-1. **Ownership.** Everything is chowned to your `UID`/`GID`, which on Unraid
-   defaults to `99:100` (`nobody:users`) — the ids Unraid's SMB stack expects.
-2. **File modes.** `UMASK=000` means files the server creates land as `666` and
-   directories as `777`. On top of that, `FIX_PERMS=true` re-applies those modes
-   across the `Saved` tree on every start *and* again on shutdown, which repairs
-   anything that already exists with a tight mode — a migrated install, or files
-   wine created itself.
-3. **Traversal.** Permissive files are useless if a parent directory blocks the
-   way in, so the chain down to `Saved` is opened up too. This is why
-   `DATA_PERM` defaults to `775` and not ich777's `770`: with `770`, an SMB user
-   who is neither the owner nor a member of group `100` cannot get in at all.
-
-### Tightening it: `CONFIG_UMASK`
-
-`CONFIG_UMASK` is a plain umask, and it means what you would expect — files
-start from `666`, directories from `777`, and the umask bits come off. Leave it
-blank and it just follows the container-wide `UMASK`, so by default there is a
-single number governing everything.
-
-| `CONFIG_UMASK` | Files | Dirs  | Who can edit over SMB                         |
-| -------------- | ----- | ----- | --------------------------------------------- |
-| `000` (default)| `666` | `777` | Anyone.                                       |
-| `007`          | `660` | `770` | Owner and group `users` only.                 |
-| `022`          | `644` | `755` | Nobody but the owner — read-only for you.     |
-| `077`          | `600` | `700` | Owner only. Not editable over SMB at all.     |
-
-`007` is the sensible choice if `000` feels too open: Unraid accounts belong to
-the `users` group (gid `100`), so SMB editing keeps working while everything
-else is shut out. Note that `022` and `077` will make the files **read-only or
-invisible** from Windows — that is the intended meaning, but it is the opposite
-of what you asked for, so pick them deliberately.
-
-An invalid value falls back to `000` with a warning in the log rather than
-failing the boot.
-
-`CONFIG_UMASK` sets what the modes become; `FIX_PERMS` decides whether the pass
-runs at all. Set `FIX_PERMS=false` to skip it entirely and manage permissions
-yourself — there is no umask value that means "leave these alone".
-
-Two things on the Unraid side that this container cannot do for you:
-
-- The **appdata share must be exported over SMB**. It often is not by default.
-  Shares → appdata → *SMB Security Settings*.
-- If permissions are already tangled from a previous container, run **Tools →
-  Docker Safe New Permissions** once with the containers stopped, or start this
-  one with `FORCE_CHOWN=true` for a single boot.
-
-Use an editor that respects existing line endings — Notepad++ or VS Code rather
-than stock Notepad — for the larger ini files.
-
-### Watching the server
-
-The engine log is streamed into the container log, so ARK's own output appears
-under **Logs** on the Unraid Docker tab, or via `docker logs`, alongside this
-container's `---...---` messages. You do not need shell access to see what the
-server is doing.
-
-The file itself is still at `ShooterGame/Saved/Logs/ShooterGame.log` if you want
-to search back through it.
-
-### Passwords end up in the engine log
-
-This container prints `<query string hidden>` instead of the launch arguments,
-but ARK itself writes the whole command line — `ServerPassword` and
-`ServerAdminPassword` in clear text — into
-`ShooterGame/Saved/Logs/ShooterGame.log`. Nothing here can prevent that.
-
-Worth knowing before you paste a log into a forum or an issue, and a reason to
-treat that file as sensitive. `ServerAdminPassword` is also the RCON password.
-
-## Stopping safely
-
-ARK writes its world on exit, so a hard kill is how people lose hours of
-progress. On `docker stop` the container sends `SaveWorld`, then `DoExit` over
-RCON, waits up to `STOP_TIMEOUT` seconds, and only then kills the wine prefix.
-
-This depends on RCON being enabled in `GameUserSettings.ini`. If you disable it,
-you lose the safe shutdown.
-
-**On Unraid, raise the container stop timeout** (Settings → Docker →
-*Default shutdown time-out*) to something above your `STOP_TIMEOUT`. Unraid's
-default is far shorter than a graceful ARK shutdown takes, so it will SIGKILL
-the container partway through.
-
-You can tell this has happened: the log reaches `---Sending DoExit---` and then
-just stops, without `---Server stopped---`. The save itself completes before
-that point — `World Saved` comes back from RCON first — so it is not data loss,
-but the server never gets to shut down cleanly.
-
-## RCON from the command line
-
-```bash
-docker exec ARK-Survival-Ascended /opt/scripts/rcon-cli.sh SaveWorld
-docker exec ARK-Survival-Ascended /opt/scripts/rcon-cli.sh ListPlayers
-docker exec ARK-Survival-Ascended /opt/scripts/rcon-cli.sh "Broadcast Restart in 5 minutes"
+```sh
+shellcheck --severity=warning shared/scripts/*.sh games/*/scripts/*.sh tests/*.sh
+python3 -m py_compile shared/scripts/rcon.py
+bash tests/unit.sh
+bash tests/e2e-terraria.sh terraria-test
 ```
 
-Worth knowing: ASA moderation commands take a player's **EOS ID**, not a
-Steam64 ID.
+`AGENTS.md` is the source of truth for build commands, test commands and the
+per-game constraints that are easy to "simplify" into a regression. Read it
+before changing a runner.
 
-## Clusters
-
-Set the same `CLUSTER_ID` on each container and point every one of them at a
-shared `CLUSTER_DIR` (map the same host path into each container). Give each
-server its own `GAME_PORT` and its own serverfiles path. Proton lives inside
-that folder, so each server automatically gets its own wine prefix — two
-servers cannot end up sharing one. The SteamCMD folder is the exception: it is
-only a downloader, so pointing every container at the same one is fine.
-
-## Troubleshooting
-
-**Server never appears in the list.** Check 7777/udp is forwarded to the Unraid
-host. If only Epic players cannot see it, set `CROSSPLAY=true`.
-
-**Crashes on startup, or wine errors about file descriptors.** The container
-raises its own limit, but the Docker-level ceiling matters too — the template
-passes `--ulimit nofile=1048576:1048576` in Extra Parameters. Make sure that
-survived any edits you made.
-
-**Cannot open or save the ini files from Windows.** Check the appdata share is
-actually exported over SMB, then confirm `FIX_PERMS` is `true` and restart the
-container — the recursive fix runs on start. If it is still wrong, the files are
-probably owned by the wrong uid; start once with `FORCE_CHOWN=true`.
-
-**Out-of-memory or mmap errors under load.** Unreal engine servers can exhaust
-the default `vm.max_map_count`. On the Unraid host:
-
-```bash
-sysctl -w vm.max_map_count=262144
-```
-
-Add it to your `go` file to make it stick across reboots.
-
-**Server exits a second after startup, engine log stops after Sentry.** That is
-Proton's `lsteamclient` failing to find the native `steamclient.so` and
-aborting the process. It looks for `~/.steam/sdk64/steamclient.so`, which the
-container links from SteamCMD automatically. If you see
-`unable to load native steamclient library` in a `DEBUG=true` log, check that
-SteamCMD actually finished its first run — the libraries only appear after it
-has downloaded its own payload.
-
-**A Proton update broke something.** `PROTON_VERSION` is pinned to
-`GE-Proton10-34` rather than tracking `latest`, so an upstream release cannot
-change what runs here without you choosing it. That is the whole reason for the
-pin: reproducibility, not a belief that newer builds are broken.
-
-**Do not set `latest`.** GE-Proton 11 hangs `ArkAscendedServer.exe` before the
-engine writes anything at all — no crash, no exception, no log, the container
-simply never comes up. Verified directly with this image on 2026-08-20:
-GE-Proton11-5 hung indefinitely while GE-Proton10-34 reached "advertising for
-join" in 44 seconds, on the same machine with the same game files and only the
-Proton build changed. The maintainer of another Linux ASA launcher reported the
-same behaviour against GE-Proton11-1 in July 2026, so it spans the series
-rather than one build.
-
-This failure is silent by nature, so the container also warns if no engine
-output has appeared several minutes after launch.
-
-The container warns in its log whenever the Proton build in use is not the one
-the image was tested against, so a container still carrying an older
-`PROTON_VERSION` setting says so on every start rather than failing silently.
-
-Changing `PROTON_VERSION` is enough on its own. A wine prefix belongs to the
-build that created it, so the container records which one that was and discards
-the prefix when it changes, letting Proton rebuild. You do not have to delete
-anything by hand, and your saves and configs are never involved — they live
-under `ShooterGame/Saved`, not in the prefix. Deleting `<serverfiles>/proton` forces a clean prefix rebuild, which is
-worth trying before anything drastic — that folder holds only the Proton build
-and the wine prefix, both of which are rebuilt automatically. Your saves and
-configs are under `ShooterGame/`, untouched.
-
-**SteamCMD keeps failing partway.** Steam's CDN deprioritises anonymous logins
-under load. Set `VALIDATE=true` and restart; it resumes rather than starting
-over.
-
-**The update never starts at all — `state is 0x6`, `0 / 0` bytes.** Steam stops
-issuing manifest request codes for a depot's old manifest once a new build
-ships, and SteamCMD asks for the installed manifest as its delta source before
-it downloads anything. Once that manifest is retired the request comes back
-`Access Denied` and the whole update is cancelled, so the server keeps booting
-the old build no matter how often you restart. `VALIDATE=true` does not help,
-because the delta-source request happens first. The container recognises this
-and recovers on its own: it moves `steamapps/appmanifest_<appid>.acf` aside —
-that file is where the stale manifest is recorded — and retries with validate,
-keeping the displaced file as `.stale`. Your saves and configs are not involved.
-
-What puts you in that position is losing SteamCMD's `depotcache`, which holds
-the manifest an incremental update diffs against. Normally it is read from disk
-and Steam is never asked. SteamCMD keeps it under `$HOME`, so the container
-points `HOME` at `<serverfiles>/home` to keep it on a mapped volume; left at the
-default it would live in the container's writable layer and be destroyed every
-time the container is recreated from a new image.
+Releases are tagged `<slug>/v<version>` — for example `dragonwilds/v1.1.0`. A
+bare `v1.2.3` builds nothing. The tag is what publishes the image and syncs that
+game's Docker Hub description.
 
 ## Credit
 
