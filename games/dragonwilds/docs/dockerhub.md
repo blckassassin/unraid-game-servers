@@ -49,35 +49,26 @@ services:
 
 ## Ports
 
-| Port   | Proto | Purpose                                            |
-| ------ | ----- | -------------------------------------------------- |
-| `7777` | UDP   | Game traffic. The one to forward.                  |
-| `8888` | UDP   | World settings beacon. Hardcoded, not published.   |
+The server binds three UDP sockets:
 
-There is no query port. `7777/udp` is the only port this container publishes.
+| Port         | Publish?  | Purpose                                            |
+| ------------ | --------- | -------------------------------------------------- |
+| `GAME_PORT`  | **Yes**   | Game traffic, and the port players are sent to.    |
+| `8888`       | Optional  | World settings beacon. Compiled constant.          |
+| `45453`      | No        | LAN discovery. Cannot work under bridge — see below.|
 
-A running server also binds `8888/udp` — its world settings beacon, logged as
-`World settings beacon listening on port 8888` — and an ephemeral high port. The
-beacon's number is hardcoded and cannot be moved. Whether any client needs to
-reach it is untested; nothing has been reported broken without it.
+There is no query port. Whether clients need to reach 8888 is untested; nothing
+has been reported broken without it.
 
 ### Changing the port
 
-Change the host side of the mapping and nothing else — the left-hand number in
-`-p 7780:7777/udp`. The server always binds 7777 inside the container and the
-mapping points at 7777, so the two cannot disagree.
-
-Leave `GAME_PORT` at 7777 on a bridge network. It is the port the server binds
-*inside* the container, not the port players use. Setting it to anything else
-gives a server that starts, logs cleanly and reports healthy while Docker
-forwards to 7777 with nothing listening there. The container warns if it sees
-that combination.
-
-**Host networking is the exception** — no mapping, no container port, so
-`GAME_PORT` is the only number there is:
+**The host port, the container port and `GAME_PORT` must all be the same
+number.**
 
 ```bash
-docker run -d --name dragonwilds --network host \
+docker run -d --name dragonwilds \
+  -p 7780:7780/udp \
+  -p 8888:8888/udp \
   -e GAME_PORT=7780 \
   -e OWNER_ID="your-player-id" \
   -v /path/to/serverfiles:/serverdata/serverfiles \
@@ -85,8 +76,32 @@ docker run -d --name dragonwilds --network host \
   ferment9348/dragonwilds:latest
 ```
 
-On Unraid, set Network Type to `host`. The trade is no network isolation, and
-8888 lands on the host too, so one instance per box.
+This is the game's behaviour, not a Docker convention. The server advertises the
+port it **binds**:
+
+```
+LogRedpointEOSNetworking: Verbose: User '(dedicated server)' is now listening on
+Internet address '0.0.0.0:7777' with 0 developer addresses.
+```
+
+The EOS session carries no port attribute of its own, so players joining from the
+in-game browser are sent to `<public ip>:<bind port>`. A port mapping cannot
+translate that. Publish 7780 against a server bound to 7777 and the world is
+listed, reports ready and heartbeats fine while every join goes to 7777.
+
+Bridge networking on a non-default port is fully supported. `--net=host` also
+works and leaves one number instead of three.
+
+### LAN discovery under bridge
+
+UDP 45453 is the LAN discovery probe. It is broadcast-based and a Docker bridge
+does not carry the host NIC's LAN broadcasts, so it cannot work and publishing it
+changes nothing. On a LAN use the in-game **Worlds → Direct** tab with
+`host:port`, which needs game 0.11.1 or newer.
+
+The **Public** tab may also stay empty from inside your own LAN, because the
+session advertises your public IP and reaching it from inside needs NAT hairpin.
+Test from outside before assuming a fault.
 
 ## Common settings
 
@@ -97,7 +112,7 @@ On Unraid, set Network Type to `host`. The trade is no network isolation, and
 | `WORLD_NAME`        | `Standard`           | World and save-file name, and most likely what players type to find you. |
 | `SRV_ADMIN_PWD`     | empty                | Admin password. Blank means the server generates one and prints it in the log. |
 | `SRV_PWD`           | empty                | Join password. Blank means open.          |
-| `GAME_PORT`         | `7777`               | The port the server binds *inside* the container. Leave it on bridge. |
+| `GAME_PORT`         | `7777`               | The port the server binds **and advertises**. Must equal both sides of the mapping. |
 | `STOP_TIMEOUT`      | `30`                 | Seconds to wait for the engine to exit. Not a save window. |
 | `VALIDATE`          | empty                | `true` makes SteamCMD verify every file.  |
 | `UID` / `GID`       | `99` / `100`         | Unraid's defaults. Neither may be 0 — the server refuses to run as root. |
