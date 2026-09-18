@@ -21,7 +21,7 @@ only.
 | `games/<slug>/docker-compose.yml`      | Local testing only. Uses uid/gid 1000, not Unraid's 99/100. |
 | `games/<slug>/scripts/`                | Game-specific scripts, copied to `/opt/scripts` in the image. |
 | `games/<slug>/docs/dockerhub.md`       | Docker Hub long description, synced by CI on release. |
-| `games/<slug>/README.md`               | That game's guide — except ASA, see Constraints.    |
+| `games/<slug>/README.md`               | That game's guide, and what that template's `<ReadMe>` points at. Every game has one. |
 | `shared/scripts/rcon.py`               | Minimal Source RCON client, shared by every game with RCON. No dependencies beyond stdlib. |
 | `shared/scripts/rcon-cli.sh`           | Thin wrapper for `docker exec` use.                 |
 | `games/terraria/scripts/console.sh`    | Sends a command through Terraria's FIFO console.    |
@@ -81,11 +81,16 @@ confirming.
 
 - **Release tags are `<slug>/v<version>`.** e.g. `ark-survival-ascended/v1.5.0`.
   A bare `v1.2.3` triggers nothing at all.
-- **ASA has no `games/ark-survival-ascended/README.md`.** Its guide is the root
-  `README.md`, because every installed CA template's `<ReadMe>` freezes that
-  URL and those users never receive a new template. This is deliberate, not an
-  oversight — do not add one and do not point the ASA template's `<ReadMe>`
-  anywhere else. Every other game gets `games/<slug>/README.md`.
+- **Every game has `games/<slug>/README.md`, and the root `README.md` is the
+  repo index.** ASA was the exception until 2026-09-18: its guide lived at the
+  root because an installed CA template's `<ReadMe>` freezes that URL forever
+  and those users never receive a new template. The guide has moved to
+  `games/ark-survival-ascended/README.md` and the template now points there, so
+  **the root `README.md` must keep a visible pointer to the ASA guide near the
+  top** — that is what an installed pre-2026-09-18 ASA template still fetches,
+  and removing it strands those users. A unit test asserts every game has a
+  README, that each template points at its own, and that the root still carries
+  the ASA pointer.
 - **Terraria's `STOP_TIMEOUT` is `6`, not ASA's `120`.** `6` plus a bounded 3s
   wait for the log reader must stay under Docker's 10s default stop grace
   (6+3=9s). Do not copy ASA's value over.

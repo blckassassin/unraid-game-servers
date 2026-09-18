@@ -22,7 +22,7 @@ Only 7777/udp needs forwarding. Forward RCON only if you administer from outside
   <Category>GameServers:</Category>
   <TemplateURL>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/templates/ark-survival-ascended.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/icon.png</Icon>
-  <ReadMe>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/README.md</ReadMe>
+  <ReadMe>https://raw.githubusercontent.com/blckassassin/unraid-game-servers/main/games/ark-survival-ascended/README.md</ReadMe>
   <License>MIT</License>
   <ExtraSearchTerms>ark survival ascended asa dedicated server steamcmd proton</ExtraSearchTerms>
   <Changes>
