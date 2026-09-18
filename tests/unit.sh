@@ -466,32 +466,38 @@ check "the dragonwilds compose file publishes the game port" "yes" \
 check "the dragonwilds compose file publishes the beacon port" "yes" \
     "$(grep -q '"8888:8888/udp"' "${dw_compose}" && echo yes || echo no)"
 
-# --- the container port has to be reachable, not just named ------------------
+# --- moving a port has to be doable from the Unraid UI ------------------------
 # Unraid disables the Container Port box of any port a TEMPLATE supplied, under
 # bridge, unless authoring mode is on. From webgui's CreateDocker.php:
 #
 #   $disableEdit = $authoringMode ? 'false' : 'true';
 #   if (target.val()) target.prop('disabled',<?=$disableEdit?>);   // case 1: Port
 #
-# Reported unreachable on 6.12.24 and the condition is unchanged on master, so
-# this is every default box, not one release. The whole three-number fix hinges
-# on that one field: naming the Edit button without naming authoring mode
-# documents a path that dead-ends.
-check "the README names Template Authoring Mode" "yes" \
-    "$(grep -qi 'template authoring mode' games/dragonwilds/README.md && echo yes || echo no)"
-check "the Game Port field names Template Authoring Mode" "yes" \
-    "$(echo "${dw_gp}" | grep -qi 'Template Authoring Mode' && echo yes || echo no)"
-check "the README gives an on-disk fallback for the container port" "yes" \
-    "$(grep -q 'templates-user/my-RuneScape-Dragonwilds.xml' games/dragonwilds/README.md \
-        && echo yes || echo no)"
-
-# A template refresh resets Container Port to the 7777 this file ships while
-# GAME_PORT keeps the operator's number - which is the 1.1.0 failure exactly.
-# Nothing in a CA template can carry a user's port, so the warning is the fix.
-check "the README warns a template update can reset a moved port" "yes" \
-    "$(grep -qi 'after any template update' games/dragonwilds/README.md && echo yes || echo no)"
-check "the Game Port field warns a template update can reset a moved port" "yes" \
-    "$(echo "${dw_gp}" | grep -qi 'after any template update' && echo yes || echo no)"
+# so every "set the Container Port" instruction pointed at a box with nowhere to
+# type. A port entry the operator ADDS has an empty target and stays editable,
+# and Remove is ungated in all three render paths, so delete-and-recreate is the
+# route - the same one ich777's templates have shipped for years. Sending an
+# operator to the terminal or to a global Docker setting for this is a
+# regression. #14.
+for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+    gp="$(grep -o '<Config Name="Game Port"[^>]*>' "templates/${slug}.xml")"
+    check "${slug}'s Game Port field says to replace the entry, not edit it" "yes" \
+        "$(echo "${gp}" | grep -q 'Remove this entry and add your own Port entry' \
+            && echo yes || echo no)"
+    check "${slug}'s README gives the delete-and-recreate steps" "yes" \
+        "$(grep -q 'Add another Path, Port, Variable, Label or Device' \
+            "games/${slug}/README.md" && echo yes || echo no)"
+    check "${slug}'s Docker Hub description gives the same route" "yes" \
+        "$(grep -q 'an entry you create yourself' "games/${slug}/docs/dockerhub.md" \
+            && echo yes || echo no)"
+    for doc in "games/${slug}/README.md" "games/${slug}/docs/dockerhub.md" \
+               "templates/${slug}.xml"; do
+        check "${doc} does not route a port change through the flash drive" "yes" \
+            "$(grep -q 'sed .*templates-user' "${doc}" && echo no || echo yes)"
+        check "${doc} does not route a port change through authoring mode" "yes" \
+            "$(grep -qi 'authoring mode' "${doc}" && echo no || echo yes)"
+    done
+done
 
 # --- every game has its own guide --------------------------------------------
 # ASA's guide used to be the root README, because an installed CA template's
