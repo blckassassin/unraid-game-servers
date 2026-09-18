@@ -43,6 +43,23 @@ port, and `GAME_PORT`. Docker cannot tell the server what its host port is, so i
 differs from the host port the log reports a number players cannot use. The same
 applies to the query pair and `QUERY_PORT`.
 
+**On Unraid, replace that port entry rather than editing it.** Unraid greys out
+the **Container Port** box of every port a template supplied, so your number will
+not go in it. A port entry you add yourself has no container port yet, and Unraid
+leaves those editable:
+
+1. **Docker → V-Rising → Edit.**
+2. On the **Game Port** row, click **Remove**.
+3. Click **Add another Path, Port, Variable, Label or Device**: Config Type
+   **Port**, Connection Type **UDP**, **Container Port** and **Host Port** both
+   set to your number.
+4. Do the same for the **Query Port** row, with both sides at your query number.
+5. Set **Server Port** and **Server Query Port** to match, then **Apply**.
+
+A template update can restore the stock entry alongside yours, and then two
+entries publish: yours, which works, and the old number, which nothing is
+listening on. Remove the restored one and Apply.
+
 ## Configuration
 
 The template's fields are passed to the server as launch options on every start,

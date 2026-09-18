@@ -124,6 +124,23 @@ quiet rather than loud: a bind port different from the container port leaves
 nothing behind the mapping and no error in the log. The peer port is derived by
 the engine as game port + 1 and has no variable, so move that mapping to match.
 
+**On Unraid, replace that port entry rather than editing it.** Unraid greys out
+the **Container Port** box of every port a template supplied, so your number will
+not go in it. A port entry you add yourself has no container port yet, and Unraid
+leaves those editable:
+
+1. **Docker → ARK-Survival-Ascended → Edit.**
+2. On the **Game Port** row, click **Remove**.
+3. Click **Add another Path, Port, Variable, Label or Device**: Config Type
+   **Port**, Connection Type **UDP**, **Container Port** and **Host Port** both
+   set to your number.
+4. Do the same for the **Peer Port** row, with both sides at your number + 1.
+5. Set **Server Port** to the same number, then **Apply**.
+
+A template update can restore the stock entry alongside yours, and then two
+entries publish: yours, which works, and the old number, which nothing is
+listening on. Remove the restored one and Apply.
+
 The query and RCON ports need none of this. Nothing reports them back to you, so
 mapping a different host port to them works on its own.
 

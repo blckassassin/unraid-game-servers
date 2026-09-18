@@ -101,45 +101,47 @@ Bridge networking on a non-default port is fully supported. Host networking
 (`--net=host`) also works and leaves one number instead of three, at the cost of
 network isolation and of 8888 landing on the host.
 
-#### On Unraid, the Container Port box is greyed out by default
+#### On Unraid, replace the Game Port row instead of editing it
 
-`GAME_PORT` is the **Server Port** field, and the container port is the
-**Container Port** box in the dialog behind the **Edit** button on the **Game
-Port** row.
+`GAME_PORT` is the **Server Port** field. The container port is the **Container
+Port** box in the dialog behind the **Edit** button on the **Game Port** row, and
+Unraid greys that box out for every port a template supplied — so your number
+will not go in it.
 
-Unraid disables the container port of any port a *template* supplied, under bridge
-networking, unless Template Authoring Mode is on. So the Edit button alone does
-not get you there — the field opens read-only and stays that way.
+Delete that row and make your own. A port entry you add yourself has no container
+port yet, and Unraid leaves those editable. To move the server to 7780:
 
-Turn it on at **Settings → Docker → Template Authoring Mode**, set it to **Yes**
-and Apply. Then edit the container, open the **Game Port** row, set Container Port
-to your number, and Apply. You can set authoring mode back to No afterwards; the
-value stays.
+1. **Docker → RuneScape-Dragonwilds → Edit.**
+2. On the **Game Port** row, click **Remove**.
+3. Click **Add another Path, Port, Variable, Label or Device**.
+4. Config Type **Port**, Connection Type **UDP**, **Container Port** `7780`,
+   **Host Port** `7780`. Name it whatever you like. **Add**.
+5. Set **Server Port** to `7780`.
+6. **Apply**, then forward UDP 7780 on your router.
 
-If that is not available to you, edit the installed template on disk instead:
+Leave the **Beacon Port** row alone — 8888 is a compiled constant and does not
+move with the game port.
 
-```sh
-sed -i '/Name="Game Port"/ s/Target="7777"/Target="7780"/' \
-  /boot/config/plugins/dockerMan/templates-user/my-RuneScape-Dragonwilds.xml
-```
-
-then **Docker → the container → Edit → Apply** to recreate it. Either way, check
-the result before you go looking for anything else:
+Check it took:
 
 ```sh
 docker inspect -f '{{json .HostConfig.PortBindings}}' RuneScape-Dragonwilds
 {"7780/udp":[{"HostPort":"7780"}],"8888/udp":[{"HostPort":"8888"}]}
 ```
 
-Both numbers on the left are the container side. If the first one still says
-`7777/udp` while Server Port says 7780, the edit did not take.
+The left-hand number of each pair is the container side. If one still reads
+`7777/udp`, the old row is still there.
 
-#### Re-check the container port after any template update
+#### If a template update puts the stock row back
 
-This template ships Container Port 7777, because a Community Applications template
-has no way to carry your number. If a template refresh puts 7777 back while
-`GAME_PORT` stays on yours, you are returned to exactly the failure this section
-exists to prevent: listed, ready, heartbeating, unreachable, and silent about it.
+This template ships Game Port 7777 on both sides and has no way to carry your
+number, so a template update can restore that row alongside the one you made. Two
+rows then publish: yours on 7780, which works, and 7777, which nothing is
+listening on.
+
+That is a loud failure rather than a silent one — if anything else on the box
+holds 7777, Docker refuses to start the container and says so. Remove the restored
+row and Apply.
 
 ### LAN discovery does not work under bridge
 

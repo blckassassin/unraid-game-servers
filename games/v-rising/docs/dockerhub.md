@@ -55,6 +55,12 @@ be the same number. Docker cannot tell the server what its host port is, so if
 differs from the host port the log reports a port players cannot use. Same for the
 query pair and `QUERY_PORT`.
 
+
+On Unraid, the **Container Port** box of every port a template supplied is greyed
+out, so your number will not go in it. Remove the **Game Port** entry and add your
+own Port entry with both sides set to your number — an entry you create yourself
+stays editable. Do the same for the query port. The README has the steps.
+
 ## Common settings
 
 | Variable         | Default           | What it does                                 |

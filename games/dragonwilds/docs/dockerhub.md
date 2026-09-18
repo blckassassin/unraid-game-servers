@@ -94,11 +94,10 @@ listed, reports ready and heartbeats fine while every join goes to 7777.
 Bridge networking on a non-default port is fully supported. `--net=host` also
 works and leaves one number instead of three.
 
-On Unraid the container port is the **Container Port** box behind the **Edit**
-button on the **Game Port** row, and Unraid greys it out for any port a template
-supplied — set **Settings → Docker → Template Authoring Mode** to **Yes** first.
-Re-check that number after any template update. The README covers that, and the
-on-disk fallback for where authoring mode is not available.
+On Unraid, the **Container Port** box of every port a template supplied is greyed
+out, so your number will not go in it. Remove the **Game Port** entry and add your
+own Port entry with both sides set to your number — an entry you create yourself
+stays editable. The README has the steps.
 
 ### LAN discovery under bridge
 
