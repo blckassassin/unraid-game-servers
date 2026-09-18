@@ -81,6 +81,13 @@ confirming.
 
 - **Release tags are `<slug>/v<version>`.** e.g. `ark-survival-ascended/v1.5.0`.
   A bare `v1.2.3` triggers nothing at all.
+- **Push release tags one at a time.** Four tags in a single `git push` created
+  all four refs and fired *zero* workflow runs: no build, no publish, and no
+  failure anywhere to notice, because an empty run list looks identical to a
+  release that has not started yet. GitHub drops push events when several tags
+  arrive together. Delete and re-push each one on its own —
+  `git push origin :refs/tags/<tag>` then `git push origin <tag>` — and confirm
+  the run exists before pushing the next.
 - **Every game has `games/<slug>/README.md`, and the root `README.md` is the
   repo index.** ASA was the exception until 2026-09-18: its guide lived at the
   root because an installed CA template's `<ReadMe>` freezes that URL forever
