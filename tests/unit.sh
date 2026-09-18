@@ -456,6 +456,43 @@ done
 check "the README notes the NAT hairpin caveat" "yes" \
     "$(grep -qi 'hairpin' games/dragonwilds/README.md && echo yes || echo no)"
 
+# --- dragonwilds compose publishes what the template publishes ---------------
+# The Dockerfile EXPOSEs the beacon, the template ships a Beacon Port row and the
+# README's run example publishes it. Compose was the one of the four that did not,
+# so anyone starting from it silently got no beacon. #14.
+dw_compose=games/dragonwilds/docker-compose.yml
+check "the dragonwilds compose file publishes the game port" "yes" \
+    "$(grep -q '"7777:7777/udp"' "${dw_compose}" && echo yes || echo no)"
+check "the dragonwilds compose file publishes the beacon port" "yes" \
+    "$(grep -q '"8888:8888/udp"' "${dw_compose}" && echo yes || echo no)"
+
+# --- the container port has to be reachable, not just named ------------------
+# Unraid disables the Container Port box of any port a TEMPLATE supplied, under
+# bridge, unless authoring mode is on. From webgui's CreateDocker.php:
+#
+#   $disableEdit = $authoringMode ? 'false' : 'true';
+#   if (target.val()) target.prop('disabled',<?=$disableEdit?>);   // case 1: Port
+#
+# Reported unreachable on 6.12.24 and the condition is unchanged on master, so
+# this is every default box, not one release. The whole three-number fix hinges
+# on that one field: naming the Edit button without naming authoring mode
+# documents a path that dead-ends.
+check "the README names Template Authoring Mode" "yes" \
+    "$(grep -qi 'template authoring mode' games/dragonwilds/README.md && echo yes || echo no)"
+check "the Game Port field names Template Authoring Mode" "yes" \
+    "$(echo "${dw_gp}" | grep -qi 'Template Authoring Mode' && echo yes || echo no)"
+check "the README gives an on-disk fallback for the container port" "yes" \
+    "$(grep -q 'templates-user/my-RuneScape-Dragonwilds.xml' games/dragonwilds/README.md \
+        && echo yes || echo no)"
+
+# A template refresh resets Container Port to the 7777 this file ships while
+# GAME_PORT keeps the operator's number - which is the 1.1.0 failure exactly.
+# Nothing in a CA template can carry a user's port, so the warning is the fix.
+check "the README warns a template update can reset a moved port" "yes" \
+    "$(grep -qi 'after any template update' games/dragonwilds/README.md && echo yes || echo no)"
+check "the Game Port field warns a template update can reset a moved port" "yes" \
+    "$(echo "${dw_gp}" | grep -qi 'after any template update' && echo yes || echo no)"
+
 # --- every game has its own guide --------------------------------------------
 # ASA's guide used to be the root README, because an installed CA template's
 # <ReadMe> freezes its URL forever and those users never receive a new template.

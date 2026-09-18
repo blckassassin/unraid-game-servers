@@ -12,6 +12,9 @@ services:
     stop_grace_period: 45s
     ports:
       - "7777:7777/udp"
+      # The world settings beacon. Fixed number, compiled into the game. The
+      # Unraid template publishes it by default, so this matches it.
+      - "8888:8888/udp"
     environment:
       # The server runs, binds its port and refuses every player without this.
       # It is your in-game Player ID, from the bottom of the in-game Settings menu.
