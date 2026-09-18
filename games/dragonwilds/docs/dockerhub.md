@@ -21,6 +21,7 @@ identical to a healthy container from the outside.
 ```bash
 docker run -d --name dragonwilds \
   -p 7777:7777/udp \
+  -p 8888:8888/udp \
   --stop-timeout 45 \
   -e OWNER_ID="your-player-id" \
   -e SERVER_NAME="My Server" \
@@ -39,6 +40,7 @@ services:
     stop_grace_period: 45s
     ports:
       - "7777:7777/udp"
+      - "8888:8888/udp"
     environment:
       OWNER_ID: "your-player-id"
       SERVER_NAME: "My Server"
@@ -91,6 +93,12 @@ listed, reports ready and heartbeats fine while every join goes to 7777.
 
 Bridge networking on a non-default port is fully supported. `--net=host` also
 works and leaves one number instead of three.
+
+On Unraid the container port is the **Container Port** box behind the **Edit**
+button on the **Game Port** row, and Unraid greys it out for any port a template
+supplied — set **Settings → Docker → Template Authoring Mode** to **Yes** first.
+Re-check that number after any template update. The README covers that, and the
+on-disk fallback for where authoring mode is not available.
 
 ### LAN discovery under bridge
 

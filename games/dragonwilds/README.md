@@ -81,10 +81,6 @@ docker run -d --name dragonwilds \
   ferment9348/dragonwilds:latest
 ```
 
-On Unraid, `GAME_PORT` is the **Server Port** field and the container port is
-behind the **Edit** button on the **Game Port** row — it is a read-only line until
-you click it, which is why it is the one people miss.
-
 This is not a Docker convention, it is this game's behaviour. **The server
 advertises the port it binds**, verified on a live server:
 
@@ -104,6 +100,46 @@ server's life and every one came from another container on the docker bridge.
 Bridge networking on a non-default port is fully supported. Host networking
 (`--net=host`) also works and leaves one number instead of three, at the cost of
 network isolation and of 8888 landing on the host.
+
+#### On Unraid, the Container Port box is greyed out by default
+
+`GAME_PORT` is the **Server Port** field, and the container port is the
+**Container Port** box in the dialog behind the **Edit** button on the **Game
+Port** row.
+
+Unraid disables the container port of any port a *template* supplied, under bridge
+networking, unless Template Authoring Mode is on. So the Edit button alone does
+not get you there — the field opens read-only and stays that way.
+
+Turn it on at **Settings → Docker → Template Authoring Mode**, set it to **Yes**
+and Apply. Then edit the container, open the **Game Port** row, set Container Port
+to your number, and Apply. You can set authoring mode back to No afterwards; the
+value stays.
+
+If that is not available to you, edit the installed template on disk instead:
+
+```sh
+sed -i '/Name="Game Port"/ s/Target="7777"/Target="7780"/' \
+  /boot/config/plugins/dockerMan/templates-user/my-RuneScape-Dragonwilds.xml
+```
+
+then **Docker → the container → Edit → Apply** to recreate it. Either way, check
+the result before you go looking for anything else:
+
+```sh
+docker inspect -f '{{json .HostConfig.PortBindings}}' RuneScape-Dragonwilds
+{"7780/udp":[{"HostPort":"7780"}],"8888/udp":[{"HostPort":"8888"}]}
+```
+
+Both numbers on the left are the container side. If the first one still says
+`7777/udp` while Server Port says 7780, the edit did not take.
+
+#### Re-check the container port after any template update
+
+This template ships Container Port 7777, because a Community Applications template
+has no way to carry your number. If a template refresh puts 7777 back while
+`GAME_PORT` stays on yours, you are returned to exactly the failure this section
+exists to prevent: listed, ready, heartbeating, unreachable, and silent about it.
 
 ### LAN discovery does not work under bridge
 
