@@ -66,11 +66,27 @@ COPY shared/scripts/ /opt/scripts/
 COPY games/dragonwilds/scripts/ /opt/scripts/
 RUN chmod -R 755 /opt/scripts
 
-# 7777/udp game traffic. This is the only port the container publishes, but NOT
-# the only socket the server binds: it also binds a hardcoded 8888/udp world
-# settings beacon and an ephemeral high port, neither of which is mapped.
-# start-server.sh's EXPOSED_PORT must track this number - a unit test asserts it.
+# The server binds three UDP sockets, verified against a live server:
+#
+#   GAME_PORT   game traffic      LogNet: ... IpNetDriver listening on port 7777
+#   8888        world settings    LogDomGameMode: World settings beacon listening
+#                 beacon            on port 8888
+#   45453       LAN discovery     LogDomLanProbe: SERVER : Socket setup OK
+#                 probe             [0.0.0.0:45453]
+#
+# Both extra ports are compiled constants - neither appears in any ini under
+# Saved/Config/LinuxServer, and neither is a literal string in the 219MB shipping
+# binary, so they are observable only at runtime.
+#
+# EXPOSE is documentation, not a gate: `-p` publishes whatever it is told to,
+# EXPOSE or no EXPOSE. These lines exist so the ports show up in `docker inspect`
+# and in the Unraid UI rather than having to be discovered from a log.
+#
+# 45453 is deliberately not EXPOSEd. LAN discovery is UDP broadcast and Docker's
+# bridge does not forward the host NIC's broadcasts into a container, so
+# publishing it would advertise a capability that cannot work. See the README.
 EXPOSE 7777/udp
+EXPOSE 8888/udp
 
 VOLUME ["/serverdata/steamcmd", "/serverdata/serverfiles"]
 

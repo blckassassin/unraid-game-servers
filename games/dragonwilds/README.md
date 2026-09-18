@@ -45,54 +45,35 @@ maps to a field in that template; the variable names are what you would use with
 
 ## Ports
 
-| Port   | Protocol | What for                                                 |
-| ------ | -------- | -------------------------------------------------------- |
-| `7777` | UDP      | Game traffic. The one to forward.                        |
-| `8888` | UDP      | World settings beacon. Hardcoded, not published.         |
+A running server binds **three** UDP sockets:
 
-`7777/udp` carries the game, and it is the only port this container publishes.
-There is no separate query port — the server registers itself and players find it
-in the in-game browser. A second instance on the same box conventionally uses
-7778.
+| Port       | Publish?         | What for                                              |
+| ---------- | ---------------- | ----------------------------------------------------- |
+| `GAME_PORT` (`7777`) | **Yes** — and forward it | Game traffic, and the port players are sent to. |
+| `8888`     | Optional         | World settings beacon. Compiled constant, cannot move. |
+| `45453`    | No — it can't work | LAN discovery probe. See below.                     |
 
-A running server binds two more sockets. One is `8888/udp`, its world settings
-beacon, which the engine announces as `LogDomGameMode: World settings beacon
-listening on port 8888`; the number is hardcoded and cannot be moved. The other
-is an ephemeral high port. Neither is published by this container, and whether
-any client needs to reach the beacon is **untested** — nothing has been reported
-broken without it. If you decide to map it, map it as `8888:8888/udp`, and note
-that a second instance on the same host then collides on it.
+There is no separate query port. The server registers itself with EOS and players
+find it in the in-game browser.
 
-**If anything else on this box already listens on 7777**, Docker refuses to start
-this container. Change this port, or the other one.
+`8888` is the world settings beacon — `LogDomGameMode: World settings beacon
+listening on port 8888`. The number is compiled into the game, so it cannot be
+moved, and only one of these containers per box can publish it. Whether clients
+actually need to reach it is **untested**; nothing has been reported broken
+without it. Publishing costs nothing if 8888 is free.
+
+**If anything else on this box already listens on your chosen port**, Docker
+refuses to start this container. Pick another, or move the other one.
 
 ### Changing the port
 
-**Change `Game Port` and nothing else.** On Unraid that is the one box; with
-`docker run` it is the left-hand side of `-p 7780:7777/udp`. The server always
-binds 7777 inside the container, the mapping points at 7777, and the two cannot
-drift apart.
-
-`GAME_PORT` is not a field you should touch on a bridge network, and since 1.0.3
-it sits in the advanced section defaulted to 7777. It is the port the server
-binds *inside* the container, which the mapping already points at. Setting it to
-anything else gives you a server that starts, logs cleanly, reports healthy and
-green, and cannot be reached by anybody — Docker forwards to 7777 and nothing is
-listening there. An external probe returns ICMP port-unreachable, which reads as
-"not forwarded" and sends you hunting your router instead. The container warns if
-it sees that combination.
-
-Why the server cannot simply bind your chosen port: Unraid renders a template's
-container port as a read-only line rather than a field, so it is frozen at 7777
-whatever you do. Given that, the server binding 7777 is the only arrangement that
-can't be wrong. Two numbers, not three.
-
-**Host networking is the exception.** With `--net=host` there is no mapping and
-no container port, so `GAME_PORT` becomes the only number there is and you set it
-directly:
+**The host port, the container port and `GAME_PORT` must all be the same
+number.** Set all three, not one.
 
 ```sh
-docker run -d --name dragonwilds --network host \
+docker run -d --name dragonwilds \
+  -p 7780:7780/udp \
+  -p 8888:8888/udp \
   -e GAME_PORT=7780 \
   -e OWNER_ID="your-player-id" \
   -v /path/to/serverfiles:/serverdata/serverfiles \
@@ -100,10 +81,45 @@ docker run -d --name dragonwilds --network host \
   ferment9348/dragonwilds:latest
 ```
 
-On Unraid, set **Network Type** to `host`; the port fields disappear and the
-server binds `GAME_PORT` on the host directly. This is the supported way to run
-on a non-default port. The trade is the usual one: no network isolation, and 8888
-lands on the host too, so one instance per box.
+On Unraid, `GAME_PORT` is the **Server Port** field and the container port is
+behind the **Edit** button on the **Game Port** row — it is a read-only line until
+you click it, which is why it is the one people miss.
+
+This is not a Docker convention, it is this game's behaviour. **The server
+advertises the port it binds**, verified on a live server:
+
+```
+LogRedpointEOSNetworking: Verbose: User '(dedicated server)' is now listening on
+Internet address '0.0.0.0:7777' with 0 developer addresses.
+```
+
+The EOS session carries no address or port attribute of its own, so a client
+joining through **Worlds → Public** is sent to `<public ip>:<bind port>`. A port
+mapping cannot translate that. Publish 7780 against a server bound to 7777 and
+your world is listed, reports `ReadyToJoin=1`, heartbeats successfully and logs
+no errors — while every join goes to 7777. On the box where this was found, 7777
+belonged to an ARK container: 112 inbound connections were logged over that
+server's life and every one came from another container on the docker bridge.
+
+Bridge networking on a non-default port is fully supported. Host networking
+(`--net=host`) also works and leaves one number instead of three, at the cost of
+network isolation and of 8888 landing on the host.
+
+### LAN discovery does not work under bridge
+
+The server's third socket, UDP 45453, is its LAN discovery probe
+(`LogDomLanProbe: SERVER : Socket setup OK [0.0.0.0:45453]`). It is
+broadcast-based, and a Docker bridge does not forward the host NIC's LAN
+broadcasts into a container. Publishing 45453 does not rescue it — there is
+nothing to forward. This container therefore does not expose it.
+
+On a LAN, use the in-game **Worlds → Direct** tab with `host:port`. That needs
+game version 0.11.1 or newer.
+
+Separately, the **Public** tab may stay empty from inside your own LAN even when
+everything is correct, because the session advertises your *public* IP and
+reaching it from inside requires NAT hairpin, which many routers do not do. Test
+from outside your network before concluding something is broken.
 
 ## Configuration
 
@@ -114,7 +130,7 @@ lands on the host too, so one instance per box.
 | `WORLD_NAME`        | `Standard`           | World and save-file name, and probably what players type to find you. See below. |
 | `SRV_ADMIN_PWD`     | empty                | Admin password. See below.                     |
 | `SRV_PWD`           | empty                | Join password. Blank means open.               |
-| `GAME_PORT`         | `7777`               | The port the server binds *inside* the container. Leave it on bridge; set it under `--net=host`. |
+| `GAME_PORT`         | `7777`               | The port the server binds **and advertises**. Must equal both sides of the port mapping. |
 | `GAME_PARAMS_EXTRA` | empty                | Appended to the launch line verbatim.          |
 | `STOP_TIMEOUT`      | `30`                 | Seconds to wait for the engine to exit. Not a save window — see below. |
 | `VALIDATE`          | empty                | `true` makes SteamCMD verify every file.       |

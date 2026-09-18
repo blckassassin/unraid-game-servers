@@ -17,9 +17,9 @@
 #    override for any of its settings. See set_ini_key below.
 # 4. An empty OwnerId is checked for explicitly, because the server's own
 #    response to one is to keep running and serve nobody.
-# 5. GAME_PORT is fixed at the exposed port on a bridge network and is not a
-#    template field. Unraid freezes the container port, so the server has to bind
-#    it. See check_game_port below.
+# 5. The game port has to be the same number in three places. The server
+#    advertises the port it BINDS, so a port mapping cannot translate it. See
+#    the launch banner below.
 
 set -u
 umask "${UMASK:-000}"
@@ -49,11 +49,6 @@ SAVE_DIR="${SAVED_DIR}/SaveGames"
 #   [/Script/Dominion.DedicatedServerSettings]
 #   AdminPassword=...
 INI_SECTION="/Script/Dominion.DedicatedServerSettings"
-# What this image's Dockerfile EXPOSEs. Not the same thing as GAME_PORT, which is
-# what the server is told to bind - see check_game_port below for why the two
-# being different is worth saying out loud. A unit test asserts this tracks the
-# EXPOSE line.
-EXPOSED_PORT="7777"
 
 SERVER_PID=""
 SHUTTING_DOWN="false"
@@ -211,54 +206,6 @@ check_owner_id() {
     return 1
 }
 
-# -----------------------------------------------------------------------------
-# GAME_PORT, and why it is not a knob on a bridge network.
-#
-# Unraid renders a template's Type="Port" entry with the container port as a
-# read-only line - it is not a field until you click Edit on that row, and on
-# some installs not even then. So the container port is, in practice, frozen at
-# whatever the template ships: 7777.
-#
-# That single fact decides the design. If the container port cannot move, the
-# server must bind 7777, because the port mapping forwards there and nowhere
-# else. A user who changes the port changes the HOST side of the mapping; the
-# inside of the container stays 7777 forever. Two numbers, not three.
-#
-# It used to be three, and the third was this variable. The template exposed it
-# as "Server Port" next to a "Game Port" mapping row, which is the same words
-# twice, and changing the port the obvious way set both visible fields to 7780
-# while the container port stayed 7777. Observed on a live server:
-#
-#   docker inspect  {"7777/udp": [{"HostPort": "7780"}]}
-#   /proc/net/udp   listening on 7780, nothing on 7777
-#
-# Docker forwarded host:7780 to a container port the server never bound. The
-# server started, the log was clean, the container was healthy and green, and no
-# player could reach it. An external probe got ICMP port-unreachable from the
-# container, which reads as "not forwarded" and sends the operator hunting their
-# router. There was no error anywhere.
-#
-# So GAME_PORT is no longer a template field. It survives as an environment
-# variable for exactly one case: host networking, where there is no mapping and
-# no container port, and the bind port is genuinely the only number there is.
-#
-# Which is what this check says. It cannot detect the network mode - a container
-# on a bridge and a container on the host see the same thing from in here - so it
-# states the condition and lets the operator match it against what they set.
-# -----------------------------------------------------------------------------
-check_game_port() {
-    [ "${GAME_PORT}" = "${EXPOSED_PORT}" ] && return 0
-
-    echo "---GAME_PORT is ${GAME_PORT}, but this image exposes ${EXPOSED_PORT}.---"
-    echo "---That is correct ONLY under host networking, where there is no port---"
-    echo "---mapping and this is the only port number involved.---"
-    echo "---"
-    echo "---On a bridge network it is wrong. The mapping forwards to ${EXPOSED_PORT} inside---"
-    echo "---this container, so nothing will reach a server bound to ${GAME_PORT} - and it---"
-    echo "---will still look perfectly healthy. Leave GAME_PORT at ${EXPOSED_PORT} and change---"
-    echo "---the host side of the mapping instead; that is the port players use.---"
-    return 0
-}
 
 # -----------------------------------------------------------------------------
 # Shutdown. It does NOT save, and nothing here can make it.
@@ -368,11 +315,39 @@ chmod +x "${SERVER_BIN}" 2>/dev/null || true
 
 write_config || exit 1
 check_owner_id || exit 1
-check_game_port
 
 mkdir -p "${SAVE_DIR}"
 
+# -----------------------------------------------------------------------------
+# The port rule, stated on every boot.
+#
+# This is a statement, not a check. Nothing inside a container can read its own
+# published port mapping, so the runner cannot tell a correct setup from a broken
+# one and must not pretend to: a warning keyed on GAME_PORT differing from the
+# image's EXPOSE fires on host 7780 -> container 7780 -> GAME_PORT 7780, which is
+# correct. False alarms on the correct configuration are worse than none.
+#
+# The rule itself is not a Docker convention, it is this game's behaviour. The
+# server advertises the port it BINDS to EOS, verified on a live server:
+#
+#   LogRedpointEOSNetworking: Verbose: User '(dedicated server)' is now listening
+#   on Internet address '0.0.0.0:7777' with 0 developer addresses.
+#
+# and the EOS session carries no address or port attribute of its own. So a
+# client joining through Worlds -> Public is sent to <public ip>:<bind port>. A
+# port mapping cannot translate that: publish 7780 against a server bound to 7777
+# and the listing works, ReadyToJoin is 1, heartbeats succeed, nothing errors -
+# and every join goes to 7777, which on the reporting box was an ARK container.
+# 112 inbound connections were logged over that server's life and every one came
+# from another container on the docker bridge.
+#
+# Hence: host port, container port and GAME_PORT are one number, three times.
+# -----------------------------------------------------------------------------
 echo "---Starting RuneScape: Dragonwilds '${SERVER_NAME}' on port ${GAME_PORT}/udp---"
+echo "---Players are sent to this port, not to whatever the mapping publishes:---"
+echo "---the server advertises the port it binds. The host port, the container---"
+echo "---port and GAME_PORT must all be ${GAME_PORT}. On Unraid the container port---"
+echo "---is behind the Edit button on the Game Port row.---"
 echo "---World '${WORLD_NAME}', saves under ${SAVE_DIR}---"
 echo "---First boot generates a world, which takes a few minutes---"
 

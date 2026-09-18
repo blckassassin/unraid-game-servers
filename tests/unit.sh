@@ -373,94 +373,87 @@ check "the runner does not launch the non-exec wrapper" "yes" \
 check "the dragonwilds image does not default to root" "yes" \
     "$(grep -q '^ *UID="0"' games/dragonwilds/Dockerfile && echo no || echo yes)"
 
-# --- dragonwilds game port warning -------------------------------------------
-# The port lives in three places that must agree - host port, container port and
-# GAME_PORT - and Unraid only exposes two of them as fields. The container port
-# is a read-only line until you click Edit, so a user who changes the port
-# changes the other two, and Docker then forwards host:7780 to a container port
-# nothing binds. The server starts, the log is clean, the container is green and
-# no player can reach it.
+# --- dragonwilds port model --------------------------------------------------
+# This game advertises the port the server BINDS, not the port the host publishes:
 #
-# Nothing inside a container can see its own host mapping, so this cannot be a
-# hard fail the way check_owner_id is: a correct 7780 setup and a broken one look
-# identical from in here. It warns instead, and that warning is the only signal
-# the failure produces anywhere. Assert it fires when it should and stays quiet
-# when it should not.
-eval "$(sed -n '/^check_game_port() {/,/^}/p' games/dragonwilds/scripts/start-server.sh)"
+#   LogRedpointEOSNetworking: Verbose: User '(dedicated server)' is now listening
+#   on Internet address '0.0.0.0:7777' with 0 developer addresses.
+#
+# and the EOS session carries no address or port attribute of its own, so a client
+# joining from the in-game browser is sent to <public ip>:<bind port>. A port
+# mapping cannot translate that. Publish 7780 against a server bound to 7777 and
+# the world is listed, reports ReadyToJoin=1, heartbeats fine and logs nothing -
+# while every join lands on 7777. So all three numbers are one number.
+#
+# 1.0.3 shipped the opposite advice and this is what guards against it returning.
+dw_runner=games/dragonwilds/scripts/start-server.sh
 
-# Read by the eval'd function above, which shellcheck cannot see into.
-# shellcheck disable=SC2034
-EXPOSED_PORT="7777"
-check "a matching game port warns about nothing" "" \
-    "$(GAME_PORT="7777" check_game_port)"
-check "a changed game port names both numbers" "yes" \
-    "$(GAME_PORT="7780" check_game_port | grep -q 'GAME_PORT is 7780, but this image exposes 7777' && echo yes || echo no)"
-check "the warning names host networking as the only correct case" "yes" \
-    "$(GAME_PORT="7780" check_game_port | grep -qi 'host networking' && echo yes || echo no)"
-check "the warning says a bridge network forwards to the exposed port" "yes" \
-    "$(GAME_PORT="7780" check_game_port | grep -qi 'bridge network' && echo yes || echo no)"
-check "the warning does not stop the boot" "0" \
-    "$(GAME_PORT="7780" check_game_port > /dev/null; echo $?)"
+# There is no runtime check here on purpose. Nothing inside a container can read
+# its own published mapping, so any warning keyed on GAME_PORT vs the image's
+# EXPOSE fires on host 7780 -> container 7780 -> GAME_PORT 7780, which is correct.
+# A false alarm on the correct configuration is worse than no alarm.
+check "the runner has no port warning that cannot tell right from wrong" "yes" \
+    "$(grep -q 'check_game_port\|EXPOSED_PORT' "${dw_runner}" && echo no || echo yes)"
 
-# EXPOSED_PORT is a hardcoded copy of the Dockerfile's EXPOSE line, because a
-# container cannot read its own image metadata. If they ever drift, the warning
-# fires on a correct setup or stays silent on a broken one - both worse than no
-# warning at all.
-check "EXPOSED_PORT tracks the Dockerfile EXPOSE line" "yes" \
-    "$(dw_exposed=$(sed -n 's|^EXPOSE \([0-9]*\)/udp$|\1|p' games/dragonwilds/Dockerfile)
-       dw_const=$(sed -n 's|^EXPOSED_PORT="\([0-9]*\)"$|\1|p' games/dragonwilds/scripts/start-server.sh)
-       [ -n "${dw_exposed}" ] && [ "${dw_exposed}" = "${dw_const}" ] && echo yes || echo no)"
+# The banner is unconditional, so it must be true unconditionally: it states the
+# rule rather than judging the configuration.
+dw_banner_text="$(sed -n '/^echo "---Starting RuneScape/,/^echo "---First boot/p' "${dw_runner}")"
+check "the banner states all three numbers must match" "yes" \
+    "$(echo "${dw_banner_text}" | grep -q 'must all be' && echo yes || echo no)"
+check "the banner names the container port" "yes" \
+    "$(echo "${dw_banner_text}" | grep -qi 'container' && echo yes || echo no)"
+check "the banner does not claim a host-side change is enough" "yes" \
+    "$(echo "${dw_banner_text}" | grep -qi 'host side of the mapping instead' && echo no || echo yes)"
 
-# The port guard must run on the way to launch, not just exist.
-check "the runner calls check_game_port before launching" "yes" \
-    "$(grep -q '^check_game_port$' games/dragonwilds/scripts/start-server.sh && echo yes || echo no)"
+# The three sockets, measured on a real boot with GAME_PORT=7900:
+#   7900  IpNetDriver listening on port 7900          <- tracks GAME_PORT
+#   8888  World settings beacon listening on port 8888 <- fixed, NOT derived
+#   45453 LogDomLanProbe: Socket setup OK              <- fixed
+# Derived from the game port would have put the beacon at 9011.
+check "the image exposes the game port" "yes" \
+    "$(grep -q '^EXPOSE 7777/udp$' games/dragonwilds/Dockerfile && echo yes || echo no)"
+check "the image exposes the beacon port" "yes" \
+    "$(grep -q '^EXPOSE 8888/udp$' games/dragonwilds/Dockerfile && echo yes || echo no)"
+check "the image does not expose the LAN probe, which cannot work on a bridge" "yes" \
+    "$(grep -q '^EXPOSE 45453' games/dragonwilds/Dockerfile && echo no || echo yes)"
+
+# --- dragonwilds template port rows ------------------------------------------
+dw_gp="$(grep -o '<Config Name="Game Port"[^>]*>' templates/dragonwilds.xml)"
+dw_sp="$(grep -o '<Config Name="Server Port"[^>]*>' templates/dragonwilds.xml)"
+check "Server Port is a visible field again" "yes" \
+    "$(echo "${dw_sp}" | grep -q 'Display="always"' && echo yes || echo no)"
+check "Server Port is required again" "yes" \
+    "$(echo "${dw_sp}" | grep -q 'Required="true"' && echo yes || echo no)"
+check "the template has a Beacon Port row" "yes" \
+    "$(grep -q '<Config Name="Beacon Port"[^>]*Target="8888"' templates/dragonwilds.xml && echo yes || echo no)"
+check "the Game Port field teaches the three-number rule" "yes" \
+    "$(echo "${dw_gp}" | grep -q 'THREE things to the same number' && echo yes || echo no)"
+check "no template text says changing this row alone moves the port" "yes" \
+    "$(grep -qi 'only port number you need to change' templates/dragonwilds.xml && echo no || echo yes)"
 
 # --- dragonwilds documented ports --------------------------------------------
-# The README, the Docker Hub description, the template and the Dockerfile all
-# claimed 7777/udp was the only socket the server binds, "verified with ss -lunp
-# ... which shows exactly one socket". A live server binds three: 7777, the
-# hardcoded 8888/udp world settings beacon, and an ephemeral high port. Four
-# copies of a wrong claim is how it survived; assert none of them comes back.
+# Four copies of "7777 is the only port the server binds" is how that wrong claim
+# survived two releases; it stays asserted against.
 dw_wrong_claim='only port the server binds\|only port this server binds\|exactly one socket'
 for doc in games/dragonwilds/README.md games/dragonwilds/docs/dockerhub.md \
            games/dragonwilds/Dockerfile; do
     check "${doc} does not claim 7777 is the only port bound" "yes" \
         "$(grep -qi "${dw_wrong_claim}" "${doc}" && echo no || echo yes)"
 done
-
-# The template's 1.0.0 entry keeps the claim as history and the 1.0.2 entry
-# corrects it directly above, so only the live field descriptions are asserted.
 check "the template's fields do not claim 7777 is the only port bound" "yes" \
-    "$(grep '<Config ' templates/dragonwilds.xml \
-        | grep -qi "${dw_wrong_claim}" && echo no || echo yes)"
-check "the template records the correction" "yes" \
-    "$(grep -q 'Correction to 1.0.0' templates/dragonwilds.xml && echo yes || echo no)"
+    "$(grep '<Config ' templates/dragonwilds.xml | grep -qi "${dw_wrong_claim}" && echo no || echo yes)"
 
-check "the README documents the 8888 beacon" "yes" \
-    "$(grep -q '8888' games/dragonwilds/README.md && echo yes || echo no)"
-check "the dockerhub description documents the 8888 beacon" "yes" \
-    "$(grep -q '8888' games/dragonwilds/docs/dockerhub.md && echo yes || echo no)"
-check "the README documents host networking as the port-change route" "yes" \
-    "$(grep -q 'net=host\|network host' games/dragonwilds/README.md && echo yes || echo no)"
-
-# --- dragonwilds has one port field ------------------------------------------
-# Unraid renders a Type="Port" container port as a read-only line, so it is
-# frozen at whatever the template ships. Given that, the server must bind that
-# same number or the mapping forwards nowhere - which means GAME_PORT is not a
-# knob on a bridge network, and must not be presented as one. It stays reachable
-# for host networking, where there is no mapping and it is the only port there
-# is, so it is demoted rather than deleted.
-dw_server_port_row="$(grep -o '<Config Name="Server Port"[^>]*>' templates/dragonwilds.xml)"
-check "the template ships exactly one always-visible port field" "1" \
-    "$(grep -o '<Config Name="[^"]*"[^>]*Type="Port"[^>]*Display="always"' templates/dragonwilds.xml | wc -l)"
-check "Server Port is demoted out of the default view" "yes" \
-    "$(echo "${dw_server_port_row}" | grep -q 'Display="advanced"' && echo yes || echo no)"
-check "Server Port is no longer required" "yes" \
-    "$(echo "${dw_server_port_row}" | grep -q 'Required="false"' && echo yes || echo no)"
-check "Server Port defaults to the exposed port" "yes" \
-    "$(echo "${dw_server_port_row}" | grep -q 'Default="7777"' && echo yes || echo no)"
-check "the Game Port field no longer teaches the three-number rule" "yes" \
-    "$(grep -o '<Config Name="Game Port"[^>]*>' templates/dragonwilds.xml \
-        | grep -qi 'THREE numbers' && echo no || echo yes)"
+for doc in games/dragonwilds/README.md games/dragonwilds/docs/dockerhub.md; do
+    check "${doc} documents all three sockets" "yes" \
+        "$(grep -q '8888' "${doc}" && grep -q '45453' "${doc}" && echo yes || echo no)"
+    check "${doc} states the LAN-discovery-under-bridge limitation" "yes" \
+        "$(grep -qi 'broadcast' "${doc}" && echo yes || echo no)"
+    check "${doc} points at the Direct tab for LAN play" "yes" \
+        "$(grep -qi 'Direct' "${doc}" && echo yes || echo no)"
+    check "${doc} keeps bridge on a non-default port supported" "yes" \
+        "$(grep -qi 'bridge networking on a non-default port is fully supported' "${doc}" && echo yes || echo no)"
+done
+check "the README notes the NAT hairpin caveat" "yes" \
+    "$(grep -qi 'hairpin' games/dragonwilds/README.md && echo yes || echo no)"
 
 exit "$fail"
