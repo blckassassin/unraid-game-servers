@@ -19,16 +19,17 @@ the field names and the documentation are all aimed at Unraid.
 | RuneScape: Dragonwilds | [guide](games/dragonwilds/README.md) | [`ferment9348/dragonwilds`](https://hub.docker.com/r/ferment9348/dragonwilds) | Native Linux binary |
 | Terraria | [guide](games/terraria/README.md) | [`ferment9348/terraria`](https://hub.docker.com/r/ferment9348/terraria) | Native Linux binary |
 | V Rising | [guide](games/v-rising/README.md) | [`ferment9348/v-rising`](https://hub.docker.com/r/ferment9348/v-rising) | Windows depot under GE-Proton + Xvfb |
+| Valheim | [guide](games/valheim/README.md) | [`ferment9348/valheim`](https://hub.docker.com/r/ferment9348/valheim) | Native Linux binary |
 
 Each guide is self-contained: everything you need for that container is on its
 own page, and none of them assumes you run any of the others.
 
 ## Install on Unraid
 
-All four are in **Community Applications** — search the game's name. The
+All five are in **Community Applications** — search the game's name. The
 template fills in sensible defaults; the only field you normally must supply is
-whatever that game uses to identify you (ARK needs nothing, Dragonwilds needs
-your in-game Player ID).
+whatever that game uses to identify you or let people in (ARK needs nothing,
+Dragonwilds needs your in-game Player ID, Valheim needs a password).
 
 To install by hand instead, each guide carries a `docker run` and a
 `docker-compose.yml` you can paste.
