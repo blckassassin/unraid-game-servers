@@ -1,0 +1,54 @@
+services:
+  valheim:
+    build:
+      context: ../..
+      dockerfile: games/valheim/Dockerfile
+    image: ferment9348/valheim:latest
+    container_name: valheim
+    restart: unless-stopped
+    # STOP_TIMEOUT is 120, plus a moment to reap the server. Docker's default
+    # grace is 10s, which would SIGKILL the server partway through its save -
+    # and the save on shutdown is the only save path Valheim has. This number
+    # matters more here than in any other container in this repo.
+    stop_grace_period: 150s
+    ports:
+      - "2456:2456/udp"
+      # Steam's A2S query port, and what Steam's "Add a server" box wants.
+      - "2457:2457/udp"
+      # The crossplay (PlayFab) backend. Bound only with CROSSPLAY=true, and
+      # published unconditionally because publishing an unbound port costs
+      # nothing.
+      - "2458:2458/udp"
+    environment:
+      SERVER_NAME: "Valheim Server"
+      WORLD_NAME: "Dedicated"
+      # Required whenever PUBLIC is 1: the server refuses to start on a listed
+      # server with no password. At least 5 characters, and it must not appear
+      # anywhere inside SERVER_NAME.
+      SRV_PWD: "changeme"
+      PUBLIC: "1"
+      CROSSPLAY: "false"
+      GAME_PORT: "2456"
+      # World modifiers, the 1.0 system. Leave blank for a normal world.
+      #   PRESET:    normal casual easy hard hardcore immersive hammer
+      #   MODIFIERS: combat= deathpenalty= resources= raids= portals=
+      #   SETKEYS:   nobuildcost playerevents passivemobs nomap
+      PRESET: ""
+      MODIFIERS: ""
+      SETKEYS: ""
+      # The server's own save and backup timers, in seconds. Blank uses its
+      # defaults: save every 1800, keep 4 backups, first at 7200, then 43200.
+      SAVE_INTERVAL: ""
+      BACKUP_COUNT: ""
+      BACKUP_SHORT: ""
+      BACKUP_LONG: ""
+      GAME_PARAMS_EXTRA: ""
+      VALIDATE: ""
+      UMASK: "000"
+      # 1000:1000 suits an ordinary Linux host. The Unraid template uses 99:100
+      # (nobody:users) instead, which is what Unraid's SMB stack expects.
+      UID: "1000"
+      GID: "1000"
+    volumes:
+      - ./data/serverfiles:/serverdata/serverfiles
+      - ./data/steamcmd:/serverdata/steamcmd

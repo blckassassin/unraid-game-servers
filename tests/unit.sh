@@ -72,6 +72,13 @@ if [ ! -f shared/scripts/start.sh ]; then
     exit 1
 fi
 
+# --- the game list ------------------------------------------------------------
+# Every per-game loop below iterates this. It used to be spelled out at each of
+# the four loops, which is four places to forget when a game is added - and a
+# forgotten loop does not fail, it just quietly stops checking one game. The CI
+# workflow keeps its own list for the same reason and says so in the same words.
+GAMES="ark-survival-ascended terraria v-rising dragonwilds valheim"
+
 # --- shared library surface --------------------------------------------------
 # Two games source these now. A function that silently fails to move during an
 # extraction produces a container that boots and then dies inside wine, so
@@ -162,7 +169,7 @@ check "no admin password disables rcon and emits no password flag" \
 # "missing" stays empty - which would report a pass for a template that does not
 # exist at all, in exactly the situation this check was written for.
 
-for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+for slug in ${GAMES}; do
     missing=""
     targets=""
     if [ ! -f "templates/${slug}.xml" ]; then
@@ -466,6 +473,180 @@ check "the dragonwilds compose file publishes the game port" "yes" \
 check "the dragonwilds compose file publishes the beacon port" "yes" \
     "$(grep -q '"8888:8888/udp"' "${dw_compose}" && echo yes || echo no)"
 
+# --- valheim release and CI ---------------------------------------------------
+check "valheim release version extracts" \
+    "1.0.0" "$(extract valheim valheim/v1.0.0)"
+check "a dragonwilds tag does not match the valheim pattern" \
+    "" "$(extract valheim dragonwilds/v1.0.0)"
+check "valheim is in the CI game list" "yes" \
+    "$(grep -q '"slug":"valheim"' .github/workflows/build.yml && echo yes || echo no)"
+
+vh_runner=games/valheim/scripts/start-server.sh
+
+# --- valheim's two Steam ids --------------------------------------------------
+# They are different numbers and mixing them up breaks the server two different
+# ways. GAME_ID 896660 is the dedicated server app, which is what SteamCMD
+# installs. SteamAppId 892970 is the CLIENT app id, which the server process
+# itself must find in its environment or it will not start. The shipped
+# start_server.sh exports exactly that, and this runner has to reproduce it
+# because it deliberately bypasses that script.
+check "the valheim image installs the dedicated server app" "yes" \
+    "$(grep -q '^ *GAME_ID="896660"' games/valheim/Dockerfile && echo yes || echo no)"
+check "the runner exports the client app id, not the server one" "892970" \
+    "$(grep -o 'STEAM_APP_ID="[0-9]*"' "${vh_runner}" | cut -d'"' -f2)"
+check "the runner puts SteamAppId in the server's environment" "yes" \
+    "$(grep -q '^export SteamAppId=' "${vh_runner}" && echo yes || echo no)"
+check "the runner points LD_LIBRARY_PATH at the bundled steam libraries" "yes" \
+    "$(grep -q '^export LD_LIBRARY_PATH=.*linux64' "${vh_runner}" && echo yes || echo no)"
+
+# App 896660 publishes both platforms, and the shared default is windows - the
+# same trap Dragonwilds has, with the same silent symptom: the wrong depot
+# installs perfectly cleanly and the launch target is simply absent afterwards.
+check "the valheim image asks for the linux depot" "yes" \
+    "$(grep -q '^ *STEAM_DEPOT_PLATFORM="linux"' games/valheim/Dockerfile && echo yes || echo no)"
+
+# --- valheim launches the ELF, not the wrapper --------------------------------
+# The shipped start_server.sh does not exec: its last line restores
+# LD_LIBRARY_PATH, which can only run after the server has already exited. So a
+# signal sent to it never reaches the game - the same class of bug as
+# Dragonwilds' RSDragonwildsServer.sh, and worse here, because SIGTERM is
+# precisely the signal that loses the world. Launching the ELF makes $! the
+# server. Comment lines are excluded because the runner explains all this in
+# prose right above the launch.
+check "the runner launches the ELF directly" "yes" \
+    "$(grep -q 'SERVER_BIN="${SERVER_DIR}/valheim_server.x86_64"' "${vh_runner}" \
+        && echo yes || echo no)"
+check "the runner never invokes the non-exec start_server.sh" "yes" \
+    "$(grep 'start_server\.sh' "${vh_runner}" | grep -v '^[[:space:]]*#' | grep -q . \
+        && echo no || echo yes)"
+
+# --- valheim shuts down with SIGINT -------------------------------------------
+# Iron Gate documents CTRL+C as the way to stop a server and their own bug
+# tracker carries "dedicated server does not save world on SIGTERM". Valheim has
+# no RCON, no stdin console and no remote save, so this signal is the ONLY save
+# path that exists - there is no fallback if it is wrong.
+vh_shutdown="$(sed -n '/^graceful_shutdown() {/,/^}/p' "${vh_runner}")"
+check "the valheim shutdown sends INT to the server" "yes" \
+    "$(echo "${vh_shutdown}" | grep -q 'kill -INT "\${SERVER_PID}"' && echo yes || echo no)"
+check "the valheim shutdown never sends TERM to the server" "yes" \
+    "$(echo "${vh_shutdown}" | grep -qE 'kill -(TERM|SIGTERM|15) ' && echo no || echo yes)"
+
+# A real save window, unlike Dragonwilds' teardown headroom and nothing like
+# Terraria's 6. Docker's default 10s grace would SIGKILL the server partway
+# through the only save it gets.
+check "valheim's STOP_TIMEOUT is a save window, not Terraria's 6" "120" \
+    "$(grep -o 'STOP_TIMEOUT="[0-9]*"' games/valheim/Dockerfile | cut -d'"' -f2)"
+check "the valheim compose grace period exceeds STOP_TIMEOUT" "yes" \
+    "$(grep -q 'stop_grace_period: 150s' games/valheim/docker-compose.yml && echo yes || echo no)"
+
+# --- valheim ports ------------------------------------------------------------
+# Three consecutive UDP ports: game, Steam A2S query (game+1), crossplay
+# backend (game+2). Older guides call the third unnecessary, which was true
+# before crossplay existed.
+for p in 2456 2457 2458; do
+    check "the valheim image exposes ${p}/udp" "yes" \
+        "$(grep -q "^EXPOSE ${p}/udp$" games/valheim/Dockerfile && echo yes || echo no)"
+    check "the valheim compose file publishes ${p}/udp" "yes" \
+        "$(grep -q "\"${p}:${p}/udp\"" games/valheim/docker-compose.yml && echo yes || echo no)"
+done
+
+# --- valheim password rules ---------------------------------------------------
+# All three are enforced by the SERVER, by refusing to start. The container
+# checks them first only so the reason is a sentence rather than one terse line
+# in among the startup noise. Pulled out of the shipped runner rather than
+# copied, so these assertions cannot drift from the code they describe.
+eval "$(sed -n '/^check_password() {/,/^}/p' "${vh_runner}")"
+
+pw_check() {  # pw_check <password> <public> <server name>
+    (
+        SRV_PWD="$1"; PUBLIC="$2"; SERVER_NAME="$3"
+        check_password >/dev/null 2>&1 && echo ok || echo refused
+    )
+}
+
+check "a listed server with no password is refused" \
+    "refused" "$(pw_check "" 1 "My Server")"
+check "an unlisted server with no password is allowed" \
+    "ok" "$(pw_check "" 0 "My Server")"
+check "a four character password is refused" \
+    "refused" "$(pw_check abcd 1 "My Server")"
+check "a five character password is allowed" \
+    "ok" "$(pw_check abcde 1 "My Server")"
+check "a password contained in the server name is refused" \
+    "refused" "$(pw_check valheim 1 "jordans valheim server")"
+
+# The case-sensitivity of the server's own rule is undocumented, so a match that
+# only appears when case is ignored warns instead of refusing. Refusing on a
+# guess would block a server that works.
+check "a case-differing near match is allowed" \
+    "ok" "$(pw_check valheim 1 "Jordans Valheim Server")"
+# shellcheck disable=SC2034  # read by check_password, which arrives via eval above
+check "a case-differing near match still says something" "yes" \
+    "$( ( SRV_PWD=valheim; PUBLIC=1; SERVER_NAME="Jordans Valheim Server"
+          check_password ) | grep -qi 'ignore case' && echo yes || echo no)"
+
+# --- valheim proves the save directory is writable ----------------------------
+# A read-only save directory does not stop this server. It logs one
+# UnauthorizedAccessException, keeps running and serves a world out of memory
+# that it can never write, so the container looks healthy while losing
+# everything. The guard has to run BEFORE the launch to be worth anything.
+check "the runner proves the save directory is writable" "yes" \
+    "$(grep -q '^check_save_dir_writable() {' "${vh_runner}" && echo yes || echo no)"
+check "the writability guard runs before the server is launched" "yes" \
+    "$(awk '/^check_save_dir_writable \|\| exit 1/ { guard = NR }
+            /^"\$\{SERVER_BIN\}"/ { launch = NR }
+            END { print (guard && launch && guard < launch) ? "yes" : "no" }' "${vh_runner}")"
+
+# --- valheim world modifiers --------------------------------------------------
+# Three template fields become flags. Ordering is the load-bearing part: a
+# preset RESETS the sliders it covers, and the server parses left to right, so a
+# -modifier emitted before a -preset is silently overwritten. Emitting them in a
+# fixed order is what makes that impossible to get wrong.
+#
+# A typo is fatal rather than ignored, because the server's own response to an
+# unrecognised modifier is to ignore it silently - which gives you a
+# normal-difficulty world and no indication of why.
+eval "$(grep '^PRESET_VALUES=' "${vh_runner}")"
+eval "$(grep '^SETKEY_VALUES=' "${vh_runner}")"
+eval "$(sed -n '/^modifier_values() {/,/^}/p' "${vh_runner}")"
+eval "$(sed -n '/^in_list() {/,/^}/p' "${vh_runner}")"
+eval "$(sed -n '/^build_modifier_flags() {/,/^}/p' "${vh_runner}")"
+
+mod_flags() {  # mod_flags <preset> <modifiers> <setkeys>
+    # shellcheck disable=SC2034  # these are read by build_modifier_flags, which
+    # arrives via eval above and so is invisible to shellcheck from here.
+    (
+        PRESET="$1"; MODIFIERS="$2"; SETKEYS="$3"; FLAGS=()
+        build_modifier_flags >/dev/null 2>&1 || { echo REFUSED; return; }
+        echo "${FLAGS[*]:-}"
+    )
+}
+
+check "preset, modifiers and setkeys expand in that order" \
+    "-preset hard -modifier combat hard -modifier raids none -setkey nomap" \
+    "$(mod_flags hard combat=hard,raids=none nomap)"
+check "blank fields add no flags at all" \
+    "" "$(mod_flags "" "" "")"
+check "values are lowercased to the spelling the game's examples use" \
+    "-preset hard -modifier raids none" "$(mod_flags HARD RAIDS=NONE "")"
+check "spaces around entries are tolerated" \
+    "-modifier combat hard -setkey nomap" "$(mod_flags "" " combat=hard " " nomap ")"
+check "an unknown preset is refused" \
+    "REFUSED" "$(mod_flags brutal "" "")"
+check "an unknown modifier name is refused" \
+    "REFUSED" "$(mod_flags "" combat2=hard "")"
+check "a misspelled modifier value is refused rather than ignored" \
+    "REFUSED" "$(mod_flags "" combat=veryhrad "")"
+check "a modifier without a value is refused" \
+    "REFUSED" "$(mod_flags "" combat "")"
+check "an unknown toggle is refused" \
+    "REFUSED" "$(mod_flags "" "" nomapp)"
+
+# There is no spelling for a modifier's default. Each list omits its middle
+# value on purpose, so "normal" must not be accepted as one.
+check "a modifier's absent default value is not accepted" \
+    "REFUSED" "$(mod_flags "" combat=normal "")"
+
 # --- moving a port has to be doable from the Unraid UI ------------------------
 # Unraid disables the Container Port box of any port a TEMPLATE supplied, under
 # bridge, unless authoring mode is on. From webgui's CreateDocker.php:
@@ -479,7 +660,7 @@ check "the dragonwilds compose file publishes the beacon port" "yes" \
 # route - the same one ich777's templates have shipped for years. Sending an
 # operator to the terminal or to a global Docker setting for this is a
 # regression. #14.
-for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+for slug in ${GAMES}; do
     gp="$(grep -o '<Config Name="Game Port"[^>]*>' "templates/${slug}.xml")"
     check "${slug}'s Game Port field says to replace the entry, not edit it" "yes" \
         "$(echo "${gp}" | grep -q 'Remove this entry and add your own Port entry' \
@@ -505,7 +686,7 @@ done
 # It moved to games/ark-survival-ascended/README.md on 2026-09-18, so the root
 # README has to keep a pointer to it: that root URL is still what a pre-move ASA
 # template fetches, and dropping the pointer strands every one of those installs.
-for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+for slug in ${GAMES}; do
     check "${slug} has its own README" "yes" \
         "$([ -f "games/${slug}/README.md" ] && echo yes || echo no)"
     check "${slug}'s template points at its own README" "yes" \
@@ -525,13 +706,14 @@ check "the root README is an index, not one game's guide" "yes" \
 # lets a guide match itself.
 dw_siblings() {  # dw_siblings <slug> -> regex of the OTHER games' names
     case "$1" in
-        ark-survival-ascended) echo 'dragonwilds|terraria|v rising' ;;
-        terraria)              echo 'ark: survival|ark survival|dragonwilds|v rising' ;;
-        v-rising)              echo 'ark: survival|ark survival|dragonwilds|terraria' ;;
-        dragonwilds)           echo 'ark: survival|ark survival|terraria|v rising' ;;
+        ark-survival-ascended) echo 'dragonwilds|terraria|v rising|valheim' ;;
+        terraria)              echo 'ark: survival|ark survival|dragonwilds|v rising|valheim' ;;
+        v-rising)              echo 'ark: survival|ark survival|dragonwilds|terraria|valheim' ;;
+        dragonwilds)           echo 'ark: survival|ark survival|terraria|v rising|valheim' ;;
+        valheim)               echo 'ark: survival|ark survival|dragonwilds|terraria|v rising' ;;
     esac
 }
-for slug in ark-survival-ascended terraria v-rising dragonwilds; do
+for slug in ${GAMES}; do
     check "games/${slug}/README.md names no sibling container" "yes" \
         "$(grep -qiE "$(dw_siblings "${slug}")" "games/${slug}/README.md" && echo no || echo yes)"
 done
