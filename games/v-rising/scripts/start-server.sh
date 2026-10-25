@@ -23,6 +23,7 @@ source /opt/scripts/proton.sh
 source /opt/scripts/steamcmd.sh
 
 SERVER_EXE="VRisingServer.exe"
+STEAM_APP_ID="1604030"
 SERVER_LOG="${SERVER_DIR}/logs/VRisingServer.log"
 SETTINGS_SRC="${SERVER_DIR}/VRisingServer_Data/StreamingAssets/Settings"
 BURST_DLL="${SERVER_DIR}/VRisingServer_Data/Plugins/x86_64/lib_burst_generated.dll"
@@ -225,7 +226,16 @@ proton_debug_env
 
 # Proton expects to be told which game it is running. Without SteamGameId it
 # silently disables its own logging entirely and protonfixes skips every fix.
-export SteamAppId="${GAME_ID}"
+#
+# SteamAppId is a different number: the CLIENT app id, 1604030, which is what
+# the depot's own steam_appid.txt says. GAME_ID is the dedicated server app
+# SteamCMD installs, and SteamAppId beats steam_appid.txt, so exporting GAME_ID
+# here logs "App ID missmatch!" and the game skips its Steam game server setup
+# while carrying on as if nothing happened. Measured 2026-10-25: Steam logon
+# still succeeds, but the query port is never read, the server is never listed,
+# and Direct Connect stalls after the challenge. With 1604030 it is listed
+# within a minute. Do not "tidy" this back to GAME_ID.
+export SteamAppId="${STEAM_APP_ID}"
 export SteamGameId="${GAME_ID}"
 export STEAM_COMPAT_APP_ID="${GAME_ID}"
 setup_proton_prefix

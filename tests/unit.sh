@@ -193,6 +193,19 @@ check "an asa tag does not match the v-rising pattern" \
 check "v-rising is in the CI game list" "yes" \
     "$(grep -q '"slug":"v-rising"' .github/workflows/build.yml && echo yes || echo no)"
 
+# --- v rising's two Steam ids ------------------------------------------------
+# GAME_ID 1829350 is the dedicated server app SteamCMD installs. SteamAppId must
+# be the CLIENT app, 1604030, the same number the depot's steam_appid.txt holds.
+# With GAME_ID there the server logs on to Steam and looks healthy, but is never
+# listed, never answers the query port and never completes a connection.
+vr_runner=games/v-rising/scripts/start-server.sh
+check "the v-rising image installs the dedicated server app" "yes" \
+    "$(grep -q '^ *GAME_ID="1829350"' games/v-rising/Dockerfile && echo yes || echo no)"
+check "the v-rising runner exports the client app id, not the server one" "1604030" \
+    "$(grep -o 'STEAM_APP_ID="[0-9]*"' "${vr_runner}" | cut -d'"' -f2)"
+check "the v-rising runner puts that id in SteamAppId" "yes" \
+    "$(grep -q '^export SteamAppId="${STEAM_APP_ID}"' "${vr_runner}" && echo yes || echo no)"
+
 # --- steamcmd first-run retry ------------------------------------------------
 # update_game() retries once when a pass fails having installed nothing, which
 # is SteamCMD's intermittent first-run "Missing configuration". It must NOT
