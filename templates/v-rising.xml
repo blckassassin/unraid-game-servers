@@ -24,6 +24,10 @@ The server saves when the container stops. Raise Unraid's container stop timeout
   <License>MIT</License>
   <ExtraSearchTerms>v rising vampire survival dedicated server</ExtraSearchTerms>
   <Changes>
+###1.0.2 (2026-10-25)
+- Players can join. Earlier images told Steam this server was the dedicated server tool (app 1829350) instead of V Rising itself (app 1604030). The server logged on to Steam but never finished its setup: it did not answer server browser queries, was never listed, and Direct Connect timed out. Update the container; no setting needs to change.
+- BepInEx mods work. The README explains how to install them.
+
 ###1.0.1 (2026-09-18)
 - Documentation only. The image is identical to 1.0.0; there is nothing to pull.
 - Moving the game port is possible from the Unraid UI again. The old instruction said to set the Container Port, and Unraid greys that box out for every port a template supplies, so there was nowhere to type the number. Remove the Game Port entry and add your own Port entry instead, with the Container Port and Host Port both set to your number - an entry you create yourself has no container port yet and stays editable. Query Port is the same.

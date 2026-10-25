@@ -170,6 +170,14 @@ confirming.
   wrappers — `xvfb-run` and the Proton launcher — carry the exe name on their
   command lines, so `pkill -f` hits them too, and signalling a wrapper orphans the
   game while the log reports a clean stop.
+- **Two different Steam ids (V Rising too).** `GAME_ID` `1829350` is the
+  dedicated server app SteamCMD installs. `SteamAppId` must be the client app,
+  `1604030`, which is also what the depot's `steam_appid.txt` holds; the variable
+  beats that file. With `GAME_ID` there the game logs `App ID missmatch!` and
+  skips its Steam game server setup, while Steam logon still succeeds: no A2S
+  reply, never listed, and Direct Connect stalls after the challenge. It reads
+  exactly like a Proton lsteamclient bug, and it is not one. `SteamGameId` stays
+  `GAME_ID`, because Proton names its log after it.
 - **Graceful shutdown depends on RCON (ASA).** `SaveWorld` then `DoExit` over
   RCON, then a timed wait, then kill the wine prefix. A hard kill loses world
   state. Terraria has no RCON; its shutdown writes `exit` into a FIFO console

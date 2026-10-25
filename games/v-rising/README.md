@@ -148,7 +148,28 @@ server with no admin password still saves cleanly. RCON's own `shutdown` command
 saves too, but it schedules rather than acts — a one-minute notice really does wait,
 which is useful for warning players and useless for stopping a container.
 
+## Mods (BepInEx)
+
+Unzip the V Rising BepInEx pack into the server files folder, so `winhttp.dll`,
+`doorstop_config.ini`, `dotnet/` and `BepInEx/` sit next to `VRisingServer.exe`.
+Then add a variable `WINEDLLOVERRIDES` set to `winhttp=n,b` and restart. Without
+it wine uses its own `winhttp.dll` and BepInEx never starts. Plugins go in
+`BepInEx/plugins/`.
+
+The first boot with BepInEx builds its interop assemblies, which takes several
+minutes and needs more than 6GB of free memory. If the server is killed partway
+through, delete `BepInEx/interop` before restarting so it is built again from
+scratch.
+
 ## Troubleshooting
+
+**Players time out on Direct Connect, and the server is never listed (image
+1.0.1 and older).** Those images told Steam the server was app 1829350, the
+dedicated server tool, instead of V Rising itself, app 1604030. The server logged
+on to Steam but skipped its game server setup, so it never answered the query
+port, never appeared in the browser, and stalled every connection after the first
+handshake. The log shows `App ID missmatch!` near the top. Pull the current image;
+no setting needs to change.
 
 **Nothing in the log at all, for a long time.** First boot is genuinely slow: 2GB
 of download, then a Proton prefix build. If it stays silent well past that, the
